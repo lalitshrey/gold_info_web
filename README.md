@@ -23,9 +23,9 @@ python fastapi_app.py
 ```
 
 Open http://127.0.0.1:8000/ in your browser. The page shows COMEX gold/silver,
-USD/INR, MCX gold, MCX silver, and MCX crude oil prices. Use **Refresh prices**
-to fetch updated quotes.
-The JSON endpoints are `GET /api/prices` and `POST /api/refresh`.
+USD/INR, MCX gold, MCX silver, MCX crude oil prices, and stock/market headlines.
+Use **Refresh prices** to fetch updated quotes. The JSON endpoints are
+`GET /api/prices`, `POST /api/refresh`, and `GET /api/news`.
 
 Alternatively, run the app with Uvicorn:
 
@@ -46,6 +46,8 @@ python precious_metals_dashboard.py
   blocks the request or the quote cannot be parsed.
 - MCX silver: [Economic Times](https://economictimes.indiatimes.com/commoditysummary/symbol-SILVER.cms).
 - MCX crude oil: [Economic Times](https://economictimes.indiatimes.com/commoditysummary/symbol-CRUDEOIL.cms).
+- Stock and market headlines: RSS sources configured in
+  `stock_news_agent/providers/rss_provider.py`.
 - USD/INR: Moneycontrol, with a dated reference-rate fallback when unavailable.
 
 The MCX gold, silver, and crude oil quotes are futures contract prices. Crude

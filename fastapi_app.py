@@ -14,6 +14,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
+from stock_news_agent.aggregator import merge_filter_sort
+from stock_news_agent.providers.rss_provider import fetch_rss
 from get_gold_silver_comexlive import get_gold_silver
 from get_gold_silver_moneycontrol import (
     get_mcx_crude_oil_price,
@@ -219,6 +221,34 @@ async def prices() -> dict[str, Any]:
 @app.post("/api/refresh")
 async def refresh_prices() -> dict[str, Any]:
     return await _refresh_prices(force=True)
+
+
+@app.get("/api/news")
+async def stock_news() -> dict[str, Any]:
+    try:
+        items = await fetch_rss()
+        articles = merge_filter_sort(
+            items,
+            lookback_minutes=7 * 24 * 60,
+            limit=12,
+        )
+    except Exception as error:
+        _logger.exception("Could not fetch stock and market news")
+        raise HTTPException(
+            status_code=503,
+            detail="Stock news is temporarily unavailable.",
+        ) from error
+
+    return {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "articles": [
+            item.model_dump(
+                mode="json",
+                include={"title", "url", "published_at", "source"},
+            )
+            for item in articles
+        ],
+    }
 
 
 def main() -> None:
