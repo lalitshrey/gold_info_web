@@ -32,12 +32,13 @@ try:
     from silver_price_converter import convert_silver_price_usd_oz_to_inr_kg, add_duty_and_gst as silver_duty_gst
     from get_gold_silver_comexlive import get_gold_silver
     from get_usdinr_moneycontrol import get_usdinr
+    from get_gold_silver_moneycontrol import get_gold_price as get_moneycontrol_gold
 except ImportError as e:
     print(f"Error: Missing required module. Ensure all modules are in the same folder.\n{e}")
     sys.exit(1)
 
 # Constants
-IMPORT_DUTY = 0.06  # 6%
+IMPORT_DUTY = 0.15  # 15% gold import duty
 GST = 0.03          # 3%
 
 console = Console()
@@ -62,6 +63,10 @@ def create_usdinr_panel(usdinr) -> Panel:
     content = Text()
     content.append("USD/INR: ", style="bold white")
     content.append(f"₹{usdinr.rate:.4f}", style="bold green")
+    content.append(f"\nSource: {usdinr.source}", style="dim")
+    as_of = (usdinr.raw or {}).get("as_of")
+    if as_of:
+        content.append(f"\nUpdated: {as_of}", style="dim")
     
     if usdinr.change is not None:
         change_style = "green" if usdinr.change >= 0 else "red"
@@ -79,6 +84,25 @@ def create_usdinr_panel(usdinr) -> Panel:
         content.append(f"{usdinr.high:.4f} / {usdinr.low:.4f}", style="yellow")
     
     return Panel(content, title="[bold blue]💵 Exchange Rate[/bold blue]", border_style="blue", box=box.ROUNDED)
+
+
+def create_moneycontrol_gold_panel(gold_mc) -> Panel:
+    """Create a panel showing the current MCX gold quote and its provider."""
+    content = Text()
+    if gold_mc is not None:
+        content.append("Current: ", style="dim")
+        content.append(f"₹{gold_mc.last:,.2f}", style="bold green")
+        content.append(" / 10g", style="dim")
+        source = "Moneycontrol" if gold_mc.source == "moneycontrol" else gold_mc.source
+        content.append(f"\nSource: {source}", style="dim")
+    else:
+        content.append("MCX gold quote unavailable", style="bold yellow")
+    return Panel(
+        content,
+        title="[bold yellow]🏪 Gold (MCX)[/bold yellow]",
+        border_style="yellow",
+        box=box.ROUNDED,
+    )
 
 
 def create_gold_table(gold, rate) -> Table:
@@ -210,11 +234,17 @@ def create_summary_table(gold, silver, rate) -> Table:
 def create_footer() -> Panel:
     """Create a footer with additional info."""
     content = Text()
-    content.append("* After Tax = Import Duty (6%) + GST (3%)\n", style="dim")
+    content.append(
+        "* After Tax = Gold: Import Duty (15%) + GST (3%); "
+        "Silver: Import Duty (6%) + GST (3%)\n",
+        style="dim",
+    )
     content.append("Sources: ", style="dim")
     content.append("comexlive.org", style="blue underline")
     content.append(" | ", style="dim")
     content.append("moneycontrol.com", style="blue underline")
+    content.append(" | ", style="dim")
+    content.append("economictimes.indiatimes.com", style="blue underline")
     
     return Panel(content, border_style="dim", box=box.SIMPLE)
 
@@ -232,9 +262,24 @@ def main() -> None:
         try:
             console.log("[cyan]Fetching USD/INR from Moneycontrol...[/cyan]")
             usdinr = get_usdinr()
+            if usdinr.source != "moneycontrol":
+                console.log(
+                    f"[yellow]Moneycontrol unavailable; using dated reference rate "
+                    f"from {usdinr.source}.[/yellow]"
+                )
             
             console.log("[yellow]Fetching Gold & Silver from COMEX...[/yellow]")
             gold, silver = get_gold_silver()
+
+            console.log(
+                "[cyan]Fetching MCX Gold from Moneycontrol "
+                "(Economic Times fallback)...[/cyan]"
+            )
+            try:
+                gold_mc = get_moneycontrol_gold()
+            except Exception as e:
+                gold_mc = None
+                console.log(f"[yellow]Could not fetch Moneycontrol Gold: {e}[/yellow]")
             
         except Exception as e:
             console.print(f"[bold red]Error fetching data:[/bold red] {e}")
@@ -254,6 +299,9 @@ def main() -> None:
         create_gold_table(gold, rate),
         create_silver_table(silver, rate)
     ], equal=True, expand=True))
+    console.print()
+
+    console.print(create_moneycontrol_gold_panel(gold_mc))
     console.print()
     
     # Summary table

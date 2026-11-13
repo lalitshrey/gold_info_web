@@ -1,45 +1,44 @@
-# Stock News Agent
+# Gold Info Web
 
-An async Python agent that aggregates recent news for stock tickers from multiple sources (RSS feeds and Yahoo Finance RSS). Provides a simple CLI to query tickers and print unified results.
+A Python dashboard for precious-metals prices. It displays COMEX gold and
+silver converted to INR, USD/INR, and a directly fetched MCX gold contract
+quote in a terminal dashboard.
 
-## Features
-- Async fetching with connection pooling
-- Pluggable providers (RSS, Yahoo Finance RSS)
-- Unified typed model with source metadata and deduplication
-- CLI with nice output using Rich
+## Setup
 
-## Quickstart
+Python 3.10 or later is recommended.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-
-# Example: fetch AAPL and MSFT news
-python -m stock_news_agent.cli AAPL MSFT --limit 20 --minutes 720
+python -m pip install -r requirements.txt
 ```
 
-## Usage
+## Run
 
 ```bash
-python -m stock_news_agent.cli [TICKERS ...] [OPTIONS]
+python precious_metals_dashboard.py
 ```
 
-Options:
-- `--minutes` lookback window in minutes (default 1440 = 24h)
-- `--limit` maximum items to display after merge+dedupe (default 50)
-- `--format` output format: `rich` (default) or `json`
+## Data sources
 
-## Configuration
+- COMEX gold and silver: [comexlive.org](https://comexlive.org/)
+- MCX gold: Moneycontrol, with an Economic Times fallback when Moneycontrol
+  blocks the request or the quote cannot be parsed.
+- USD/INR: Moneycontrol, with a dated reference-rate fallback when unavailable.
 
-RSS sources are defined in `stock_news_agent/providers/rss_provider.py`. You can customize or add feeds. Yahoo Finance provider uses Yahoo's public RSS endpoint per ticker.
+The MCX gold quote is a futures contract price. The COMEX prices are separate
+international quotes converted using USD/INR; they are not the same market
+price.
 
-## Notes
-- This agent uses public RSS feeds; respect each source's terms.
-- Network errors are handled gracefully; failures of a source won't break the whole run.
+The gold converter applies 15% import duty and 3% GST. The silver converter
+applies 6% import duty and 3% GST.
 
-## Development
-- Python 3.10+
-- Run `ruff` and `mypy` if you add them; not required for basic usage.
-# gold_info_agent
-# gold_info_web
+## Main modules
+
+- `precious_metals_dashboard.py` — dashboard orchestration and display.
+- `get_gold_silver_comexlive.py` — COMEX quote fetch and parsing.
+- `get_gold_silver_moneycontrol.py` — MCX gold and Moneycontrol silver quotes.
+- `get_usdinr_moneycontrol.py` — USD/INR fetch and fallback.
+- `gold_price_converter.py`, `silver_price_converter.py` — currency, weight,
+  duty, and GST calculations.

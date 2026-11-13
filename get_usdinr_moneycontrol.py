@@ -9,6 +9,7 @@ Source: https://www.moneycontrol.com/markets/currencies/usd-inr/
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -25,6 +26,7 @@ except ImportError:
 
 
 URL = "https://www.moneycontrol.com/markets/currencies/usd-inr/"
+FALLBACK_URL = "https://open.er-api.com/v6/latest/USD"
 GREEN = "\033[32m"
 RESET = "\033[0m"
 USER_AGENT = (
@@ -67,6 +69,56 @@ def _fetch_html() -> str:
         r = client.get(URL, headers={"User-Agent": USER_AGENT})
         r.raise_for_status()
         return r.text
+
+
+def _fetch_fallback_quote(primary_error: str) -> UsdInrQuote:
+    """Fetch a dated USD/INR reference rate when Moneycontrol is unavailable."""
+    if httpx is None:
+        raise RuntimeError("Install httpx: pip install httpx")
+
+    try:
+        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+            response = client.get(FALLBACK_URL, headers={"User-Agent": USER_AGENT})
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as error:
+        raise RuntimeError(
+            f"{primary_error}; fallback exchange-rate service failed: {error}"
+        ) from error
+    except ValueError as error:
+        raise RuntimeError(
+            f"{primary_error}; fallback exchange-rate service returned invalid JSON"
+        ) from error
+
+    if not isinstance(payload, dict) or payload.get("result") != "success":
+        raise RuntimeError(
+            f"{primary_error}; fallback exchange-rate service returned invalid data"
+        )
+    rates = payload.get("rates")
+    if payload.get("base_code") != "USD" or not isinstance(rates, dict):
+        raise RuntimeError(
+            f"{primary_error}; fallback exchange-rate service returned invalid data"
+        )
+    try:
+        rate = float(rates["INR"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError(
+            f"{primary_error}; fallback response has no valid USD/INR rate"
+        ) from error
+    if not math.isfinite(rate) or rate <= 0:
+        raise RuntimeError(
+            f"{primary_error}; fallback response has no valid USD/INR rate"
+        )
+
+    as_of = payload.get("time_last_update_utc")
+    raw: dict[str, Any] = {"rate": rate}
+    if isinstance(as_of, str):
+        raw["as_of"] = as_of
+    return UsdInrQuote(
+        rate=rate,
+        source="exchangerate-api.com",
+        raw=raw,
+    )
 
 
 def _extract_via_regex(html: str) -> dict[str, float] | None:
@@ -154,7 +206,7 @@ def _extract_via_bs4(html: str) -> dict[str, float] | None:
 
 def get_usdinr() -> UsdInrQuote:
     """
-    Fetch USD/INR rate from Moneycontrol.
+    Fetch USD/INR from Moneycontrol, falling back to a dated reference rate.
 
     Returns:
         UsdInrQuote with rate, bid, ask, prev_close, etc.
@@ -162,7 +214,13 @@ def get_usdinr() -> UsdInrQuote:
     Raises:
         RuntimeError: If fetch or parse fails.
     """
-    html = _fetch_html()
+    if httpx is None:
+        raise RuntimeError("Install httpx: pip install httpx")
+    try:
+        html = _fetch_html()
+    except httpx.HTTPError as error:
+        return _fetch_fallback_quote(f"Moneycontrol request failed: {error}")
+
     data: dict[str, float] | None = None
 
     if BeautifulSoup is not None:
@@ -171,9 +229,8 @@ def get_usdinr() -> UsdInrQuote:
         data = _extract_via_regex(html)
 
     if not data or "rate" not in data:
-        raise RuntimeError(
-            "Could not extract USD/INR from Moneycontrol. "
-            "The page structure may have changed."
+        return _fetch_fallback_quote(
+            "Could not extract USD/INR from Moneycontrol."
         )
 
     return UsdInrQuote(
