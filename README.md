@@ -42,3 +42,4 @@ RSS sources are defined in `stock_news_agent/providers/rss_provider.py`. You can
 - Python 3.10+
 - Run `ruff` and `mypy` if you add them; not required for basic usage.
 # gold_info_agent
+# gold_info_web
