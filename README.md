@@ -2,7 +2,7 @@
 
 A Python dashboard for precious-metals prices. It displays COMEX gold and
 silver converted to INR, USD/INR, and a directly fetched MCX gold contract
-quote in a terminal dashboard.
+quote in a terminal dashboard or browser-based FastAPI app.
 
 ## Setup
 
@@ -15,6 +15,24 @@ python -m pip install -r requirements.txt
 ```
 
 ## Run
+
+### Browser dashboard (FastAPI)
+
+```bash
+python fastapi_app.py
+```
+
+Open http://127.0.0.1:8000/ in your browser. The page shows COMEX gold/silver,
+USD/INR, and MCX gold prices. Use **Refresh prices** to fetch updated quotes.
+The JSON endpoints are `GET /api/prices` and `POST /api/refresh`.
+
+Alternatively, run the app with Uvicorn:
+
+```bash
+uvicorn fastapi_app:app --host 127.0.0.1 --port 8000
+```
+
+### Terminal dashboard
 
 ```bash
 python precious_metals_dashboard.py
@@ -37,6 +55,8 @@ applies 6% import duty and 3% GST.
 ## Main modules
 
 - `precious_metals_dashboard.py` — dashboard orchestration and display.
+- `fastapi_app.py` — FastAPI application and JSON price endpoints.
+- `templates/metals_dashboard.html` — browser dashboard UI.
 - `get_gold_silver_comexlive.py` — COMEX quote fetch and parsing.
 - `get_gold_silver_moneycontrol.py` — MCX gold and Moneycontrol silver quotes.
 - `get_usdinr_moneycontrol.py` — USD/INR fetch and fallback.
