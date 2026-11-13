@@ -44,7 +44,7 @@
     .status { margin: 0; color: #64748b; font-size: .84rem; }
     .error { color: #b91c1c; }
     h2 { margin: 0 0 15px; font-size: 1.05rem; font-weight: 720; letter-spacing: -.015em; }
-    .price-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+    .price-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
     .quote-card {
       --accent: #2563eb;
       position: relative; display: flex; min-width: 0; flex-direction: column;
@@ -55,6 +55,7 @@
     .quote-card.gold { --accent: #c58a16; }
     .quote-card.silver { --accent: #64748b; }
     .quote-card.mcx { --accent: #0f766e; }
+    .quote-card.energy { --accent: #b45309; }
     .card-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
     .card-title { min-width: 0; margin: 0; font-size: .96rem; font-weight: 740; letter-spacing: -.01em; }
     .source-badge {
@@ -140,7 +141,7 @@
     </section>
     <p class="footnote">
       COMEX quotes are shown in USD per troy ounce and converted to INR using the displayed exchange rate.
-      After-tax estimates apply the configured import duty and GST. MCX gold is a separate futures contract quote.
+      After-tax estimates apply the configured import duty and GST. MCX crude oil is converted from INR per barrel to USD per barrel using the displayed USD/INR rate; it is not a WTI or Brent benchmark quote. MCX gold and silver are separate futures contract quotes.
     </p>
   </main>
 
@@ -176,7 +177,7 @@
     function appendStats(list, entries) {
       const stats = element("dl", "stats");
       for (const [label, value] of entries) {
-        if (value == null || value === "") continue;
+        if (value == null || value === "" || value === "—") continue;
         const stat = element("div", "stat");
         stat.append(element("dt", "", label));
         stat.append(element("dd", "", value));
@@ -230,6 +231,14 @@
       const gold = data.comex_gold;
       const silver = data.comex_silver;
       const mcx = data.mcx_gold;
+      const mcxSilver = data.mcx_silver;
+      const crudeOil = data.mcx_crude_oil;
+      const crudeOilUsd = crudeOil?.usd_last == null
+        ? null
+        : { ...crudeOil, change: crudeOil.usd_change };
+      const crudeOilQuote = crudeOil
+        ? { ...crudeOil, change: crudeOilUsd?.change ?? null }
+        : null;
 
       addQuoteCard({
         title: "USD / INR",
@@ -295,11 +304,53 @@
         message: data.errors?.mcx_gold || "MCX gold quote unavailable."
       });
 
+      addQuoteCard({
+        title: "MCX Silver",
+        source: mcxSilver?.source || "Economic Times",
+        theme: "mcx",
+        quote: mcxSilver,
+        price: mcxSilver ? inr(mcxSilver.last) : "—",
+        unit: "Indian rupees per kilogram",
+        stats: mcxSilver ? [
+          ["Contract expiry", mcxSilver.expiry || "See provider"],
+          ["Previous close", inr(mcxSilver.prev_close)],
+          ["Open", inr(mcxSilver.open)],
+          ["Day high", inr(mcxSilver.high)],
+          ["Day low", inr(mcxSilver.low)]
+        ] : [],
+        message: data.errors?.mcx_silver || "MCX silver quote unavailable."
+      });
+
+      addQuoteCard({
+        title: "MCX Crude Oil",
+        source: crudeOil?.source || "Economic Times",
+        theme: "energy",
+        quote: crudeOilQuote,
+        price: crudeOilUsd ? usd(crudeOilUsd.usd_last) : "—",
+        unit: crudeOil
+          ? crudeOilUsd
+            ? "US dollars per barrel (converted from MCX)"
+            : "USD conversion unavailable without USD/INR"
+          : "US dollars per barrel",
+        stats: crudeOil ? [
+          ["Contract expiry", crudeOil.expiry || "See provider"],
+          ["MCX quote", `${inr(crudeOil.last)} / barrel`],
+          ["USD/INR used", crudeOil.usd_inr_rate == null ? "Unavailable" : `₹${number(crudeOil.usd_inr_rate, 4)} per USD`],
+          ["Previous close (USD/barrel)", usd(crudeOil.usd_prev_close)],
+          ["Open (USD/barrel)", usd(crudeOil.usd_open)]
+        ] : [],
+        message: data.errors?.mcx_crude_oil || (
+          crudeOil
+            ? "USD value unavailable because the exchange rate could not be fetched."
+            : "MCX crude oil quote unavailable."
+        )
+      });
+
       for (const [source, message] of Object.entries(data.errors || {})) {
         warningsNode.append(element("p", "warning", `${source}: ${message}`));
       }
 
-      const hasAnyQuote = Boolean(fx || gold || silver || mcx);
+      const hasAnyQuote = Boolean(fx || gold || silver || mcx || mcxSilver || crudeOil);
       statusNode.classList.toggle("error", !hasAnyQuote);
       const timestamp = data.updated_at ? new Date(data.updated_at).toLocaleString() : "time unavailable";
       statusNode.textContent = `Updated ${timestamp}${hasAnyQuote ? "" : " · no price sources responded"}`;

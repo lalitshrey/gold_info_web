@@ -1,5 +1,5 @@
 """
-Fetch Gold and Silver prices from Moneycontrol.
+Fetch MCX commodity prices from Moneycontrol and Economic Times.
 
 Usage:
     python get_gold_silver_moneycontrol.py
@@ -8,6 +8,8 @@ Sources:
     Gold: https://www.moneycontrol.com/commodity/mcx-gold-price/?type=futures&exp=2026-12-04
     Gold fallback: https://economictimes.indiatimes.com/commoditysummary/symbol-GOLD.cms
     Silver: https://www.moneycontrol.com/markets/silver-rates
+    MCX Silver: https://economictimes.indiatimes.com/commoditysummary/symbol-SILVER.cms
+    MCX Crude Oil: https://economictimes.indiatimes.com/commoditysummary/symbol-CRUDEOIL.cms
 """
 
 from __future__ import annotations
@@ -31,6 +33,8 @@ except ImportError:
 
 GOLD_URL = "https://www.moneycontrol.com/commodity/mcx-gold-price/?type=futures&exp=2026-12-04"
 ECONOMIC_TIMES_GOLD_URL = "https://economictimes.indiatimes.com/commoditysummary/symbol-GOLD.cms"
+ECONOMIC_TIMES_SILVER_URL = "https://economictimes.indiatimes.com/commoditysummary/symbol-SILVER.cms"
+ECONOMIC_TIMES_CRUDE_OIL_URL = "https://economictimes.indiatimes.com/commoditysummary/symbol-CRUDEOIL.cms"
 SILVER_URL = "https://www.moneycontrol.com/markets/silver-rates"
 GREEN = "\033[32m"
 RESET = "\033[0m"
@@ -46,7 +50,7 @@ RETRY_DELAY = 2  # seconds
 
 @dataclass
 class PreciousMetalQuote:
-    """Precious metal quote from Moneycontrol."""
+    """MCX commodity quote."""
 
     name: str
     last: float
@@ -63,6 +67,8 @@ class PreciousMetalQuote:
     def __str__(self) -> str:
         if self.unit == "per 10g":
             last_str = f"{GREEN}₹{self.last:,.2f}{RESET} per 10g"
+        elif self.unit == "per barrel":
+            last_str = f"{GREEN}₹{self.last:,.2f}{RESET} per barrel"
         else:
             last_str = f"{GREEN}₹{self.last:,.2f}{RESET} per kg"
 
@@ -177,8 +183,14 @@ def _extract_gold_from_mcx_html(html: str) -> PreciousMetalQuote | None:
     )
 
 
-def _extract_economictimes_gold(html: str) -> PreciousMetalQuote | None:
-    """Extract MCX gold contract quote fields from Economic Times HTML."""
+def _extract_economictimes_quote(
+    html: str,
+    *,
+    name: str,
+    unit: str,
+    source_url: str,
+) -> PreciousMetalQuote | None:
+    """Extract MCX contract quote fields from an Economic Times commodity page."""
     if not re.search(r'class=["\']small\s+MCX["\']', html, re.I):
         return None
 
@@ -232,7 +244,7 @@ def _extract_economictimes_gold(html: str) -> PreciousMetalQuote | None:
             change_pct = abs(change_pct) if change >= 0 else -abs(change_pct)
 
     expiry_match = re.search(r"\bExpiry:\s*([^|<]+)", html, re.I)
-    raw: dict[str, Any] = {"last": last, "source_url": ECONOMIC_TIMES_GOLD_URL}
+    raw: dict[str, Any] = {"last": last, "source_url": source_url}
     if expiry_match:
         raw["expiry"] = unescape(expiry_match.group(1)).strip()
     if previous_close is not None:
@@ -245,15 +257,45 @@ def _extract_economictimes_gold(html: str) -> PreciousMetalQuote | None:
     open_text = field_text("openPrice")
     open_price = _parse_number(open_text) if open_text is not None else None
     return PreciousMetalQuote(
-        name="Gold (MCX)",
+        name=name,
         last=last,
         change=change,
         change_pct=change_pct,
         prev_close=previous_close,
         open_=open_price,
-        unit="per 10g",
+        unit=unit,
         source="Economic Times",
         raw=raw,
+    )
+
+
+def _extract_economictimes_gold(html: str) -> PreciousMetalQuote | None:
+    """Extract MCX gold contract quote fields from Economic Times HTML."""
+    return _extract_economictimes_quote(
+        html,
+        name="Gold (MCX)",
+        unit="per 10g",
+        source_url=ECONOMIC_TIMES_GOLD_URL,
+    )
+
+
+def _extract_economictimes_silver(html: str) -> PreciousMetalQuote | None:
+    """Extract MCX silver contract quote fields from Economic Times HTML."""
+    return _extract_economictimes_quote(
+        html,
+        name="Silver (MCX)",
+        unit="per kg",
+        source_url=ECONOMIC_TIMES_SILVER_URL,
+    )
+
+
+def _extract_economictimes_crude_oil(html: str) -> PreciousMetalQuote | None:
+    """Extract the MCX crude oil futures quote from Economic Times HTML."""
+    return _extract_economictimes_quote(
+        html,
+        name="Crude Oil (MCX)",
+        unit="per barrel",
+        source_url=ECONOMIC_TIMES_CRUDE_OIL_URL,
     )
 
 
@@ -517,6 +559,30 @@ def get_silver_price() -> PreciousMetalQuote:
             "The page structure may have changed."
         )
     return silver
+
+
+def get_mcx_silver_price() -> PreciousMetalQuote:
+    """Fetch the MCX Silver contract quote directly from Economic Times."""
+    html = _fetch_html_with_retry(ECONOMIC_TIMES_SILVER_URL)
+    silver = _extract_economictimes_silver(html)
+    if silver is None:
+        raise RuntimeError(
+            "Could not extract MCX Silver from Economic Times. "
+            "The page structure may have changed."
+        )
+    return silver
+
+
+def get_mcx_crude_oil_price() -> PreciousMetalQuote:
+    """Fetch the MCX Crude Oil contract quote from Economic Times."""
+    html = _fetch_html_with_retry(ECONOMIC_TIMES_CRUDE_OIL_URL)
+    crude_oil = _extract_economictimes_crude_oil(html)
+    if crude_oil is None:
+        raise RuntimeError(
+            "Could not extract MCX Crude Oil from Economic Times. "
+            "The page structure may have changed."
+        )
+    return crude_oil
 
 
 def get_gold_silver() -> tuple[PreciousMetalQuote, PreciousMetalQuote]:
