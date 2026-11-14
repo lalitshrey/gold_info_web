@@ -1,14 +1,9 @@
 # Gold Info Web Architecture
 
-This repository is a small Python application for precious-metals prices. It
-has two user interfaces over the same quote and calculation modules:
-
-- A browser dashboard served by FastAPI.
-- A terminal dashboard rendered with Rich.
-
-The Git repository tracks the root-level gold and silver app. Other
-untracked directories in the working folder are separate local content and
-are outside this architecture guide.
+Gold Info Web is a Python application with a FastAPI browser dashboard and a
+Rich terminal dashboard. The browser presents COMEX precious-metal quotes,
+MCX commodity contracts, USD/INR, RSS headlines with related-stock sentiment,
+and a gold-market research panel.
 
 ## System overview
 
@@ -16,84 +11,103 @@ are outside this architecture guide.
 flowchart TD
     Browser["Browser"]
     UI["templates/metals_dashboard.html"]
-    API["fastapi_app.py<br/>FastAPI routes and 60-second cache"]
-    Collector["_collect_prices()<br/>parallel provider calls"]
+    API["fastapi_app.py<br/>FastAPI routes"]
+    Prices["_collect_prices()<br/>parallel quote fetch and conversion"]
+    News["RSS provider and article aggregator"]
+    Sentiment["VADER sentiment and NSE symbol matching"]
+    Outlook["gold_research.py<br/>historical price momentum"]
+    Terminal["precious_metals_dashboard.py<br/>Rich terminal UI"]
 
     COMEX["get_gold_silver_comexlive.py"]
     MCX["get_gold_silver_moneycontrol.py"]
     FX["get_usdinr_moneycontrol.py"]
     GoldMath["gold_price_converter.py"]
     SilverMath["silver_price_converter.py"]
-
-    Terminal["precious_metals_dashboard.py<br/>Rich terminal UI"]
+    Yahoo["Yahoo Finance chart API<br/>COMEX Gold Futures GC=F"]
+    WGC["World Gold Council<br/>Q3 2026 Gold Demand Trends"]
+    RSS["stock_news_agent/providers/rss_provider.py"]
+    Symbols["stock_news_agent/static/nse_symbols.json"]
 
     Browser --> UI
-    UI -->|"GET /api/prices"| API
-    UI -->|"POST /api/refresh"| API
-    API --> Collector
+    UI -->|"GET /api/prices; POST /api/refresh"| API
+    UI -->|"GET /api/news"| API
+    UI -->|"GET /api/gold-outlook"| API
+    API --> Prices
+    API --> News
+    News --> RSS
+    News --> Sentiment
+    Sentiment --> Symbols
+    API --> Outlook
+    Outlook --> Yahoo
+    API -. "cited research context" .-> WGC
+    Prices --> COMEX
+    Prices --> MCX
+    Prices --> FX
+    Prices --> GoldMath
+    Prices --> SilverMath
     Terminal --> COMEX
     Terminal --> MCX
     Terminal --> FX
     Terminal --> GoldMath
     Terminal --> SilverMath
-    Collector --> COMEX
-    Collector --> MCX
-    Collector --> FX
-    Collector --> GoldMath
-    Collector --> SilverMath
-
-    COMEX -->|"COMEX gold and silver quotes"| Collector
-    MCX -->|"MCX gold futures quote"| Collector
-    FX -->|"USD/INR rate"| Collector
 ```
 
-The FastAPI and terminal interfaces reuse the source and conversion modules.
-The browser UI does not fetch providers directly; it calls the JSON API.
+The browser does not call market-data providers directly; the FastAPI
+application owns provider calls and prepares JSON responses. News and gold
+research load independently from the quote cards so failure in one section
+does not hide the others.
 
 ## Browser application
 
-### Entry point
+### Entry point and run
 
-`fastapi_app.py` creates the FastAPI object named `app`. Start it from the
-repository root using either:
+`fastapi_app.py` creates the FastAPI application object `app`. Run from the
+repository root:
 
 ```bash
 python fastapi_app.py
 ```
 
-or:
+Or use Uvicorn:
 
 ```bash
 uvicorn fastapi_app:app --host 127.0.0.1 --port 8000
 ```
 
-The browser dashboard is at `http://127.0.0.1:8000/`.
+Open `http://127.0.0.1:8000/`.
 
-### Request and refresh flow
+### Routes
 
-1. `GET /` serves `templates/metals_dashboard.html`.
-2. The page JavaScript requests `GET /api/prices` on load.
-3. The user can click **Refresh prices**, which calls `POST /api/refresh`.
-4. The API fetches COMEX, USD/INR, and MCX gold independently and in parallel
-   using a thread pool. These existing fetchers make synchronous HTTP calls.
-5. Successful quotes are normalized to JSON-compatible dictionaries.
-6. COMEX gold and silver are converted to INR and after-tax values only when
-   both the COMEX quotes and USD/INR rate are available.
-7. The result includes an update time, quote data, and per-source errors. The
-   response is held in an in-process cache for 60 seconds. A manual refresh
-   bypasses the cache.
-8. The page renders quote cards, the provider name, and any source warnings.
+| Route | Purpose |
+| --- | --- |
+| `GET /` | Serves `templates/metals_dashboard.html`. |
+| `GET /api/prices` | Returns cached quotes or fetches a new set when the 60-second cache expires. |
+| `POST /api/refresh` | Forces a new parallel quote fetch and refreshes the in-process cache. |
+| `GET /api/news` | Fetches, deduplicates, and filters recent RSS news; adds VADER sentiment and related NSE stocks. |
+| `GET /api/gold-outlook` | Returns COMEX gold futures momentum and cited long-term demand research. |
 
-If all main sources fail to provide USD/INR, COMEX gold, and MCX gold, the API
-returns HTTP 503 with error details. A partial response is returned when at
-least one of those sources succeeds.
+### Quote flow
 
-### API shape
+1. The dashboard requests `/api/prices` when the page loads.
+2. `_collect_prices()` invokes COMEX, USD/INR, MCX Gold, MCX Silver, and MCX
+   Crude Oil fetchers in a thread pool.
+3. Each provider error is logged and included by source key in the response;
+   successful providers still contribute data.
+4. COMEX gold and silver are converted to INR only when a positive USD/INR
+   rate is available. Configured duty/GST estimates are calculated separately.
+5. MCX crude oil is quoted in INR per barrel by Economic Times. The API also
+   derives a USD-per-barrel equivalent by dividing the quote and its available
+   price fields by the USD/INR rate. This is a currency conversion of the MCX
+   contract, not a WTI or Brent quote.
+6. The result is cached in memory for 60 seconds. Restarting the process
+   clears the cache.
 
-- `GET /api/prices` — return cached prices or fetch them if the cache is stale.
-- `POST /api/refresh` — force a new fetch and replace the cache.
+The partial-response check returns HTTP 503 only if all supported quote data
+is unavailable; otherwise the API returns available data plus provider errors.
 
-Each successful response has this general shape:
+### Price response shape
+
+The price response includes these top-level fields:
 
 ```json
 {
@@ -101,31 +115,95 @@ Each successful response has this general shape:
   "usd_inr": {"rate": 94.0, "source": "provider"},
   "comex_gold": {"last": 3900.0, "inr_10g": 0.0},
   "comex_silver": {"last": 50.0, "inr_kg": 0.0},
-  "mcx_gold": {"last": 136750.0, "source": "Economic Times"},
+  "mcx_gold": {"last": 136750.0, "unit": "INR per 10g"},
+  "mcx_silver": {"last": 176500.0, "unit": "INR per kg"},
+  "mcx_crude_oil": {
+    "last": 8300.0,
+    "unit": "INR per barrel",
+    "usd_last": 88.0,
+    "usd_inr_rate": 94.0
+  },
   "errors": {}
 }
 ```
 
-Quote fields depend on which source data is available. The numerical values in
-this example are illustrative, not hard-coded app data.
+Fields are omitted or `null` when the source or a dependent conversion is
+unavailable. The numbers above are illustrative.
 
-## Price providers and calculations
+## News and stock sentiment
+
+`GET /api/news` calls the RSS provider in the stock-news package, merges and
+deduplicates items, keeps items from the previous seven days, and returns at
+most 12 articles.
+
+For each article, `fastapi_app.py`:
+
+1. Scores its title and summary with NLTK VADER. The analyzer is initialized
+   once; the `vader_lexicon` is downloaded on first use if absent.
+2. Matches company names and unambiguous uppercase ticker symbols against the
+   NSE symbol list in `stock_news_agent/static/nse_symbols.json`.
+3. Returns the sentiment label and compound score, plus matched stocks.
+4. Aggregates average compound sentiment and article count per matched stock.
+
+The UI shows article sentiment, related ticker tags, and up to eight
+stock-level summaries. Sentiment is a text signal, not a price prediction or
+investment recommendation.
+
+### Stock-news deployment dependency
+
+The app imports `stock_news_agent.aggregator` and
+`stock_news_agent.providers.rss_provider`, and reads its NSE symbols JSON file.
+Those files are required for the news/sentiment feature. In the current local
+worktree, `stock_news_agent/` is untracked by Git, so it is not included in
+commits or a fresh clone unless it is separately added or otherwise provided.
+Ensure that package and its `static/nse_symbols.json` data file are present in
+the deployment before starting FastAPI. The root `requirements.txt` includes
+the required `nltk` runtime dependency; install dependencies with:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+## Gold outlook and research
+
+`gold_research.py` requests one year of daily COMEX Gold Futures (`GC=F`)
+history from the Yahoo Finance chart API. It calculates:
+
+- Short-term momentum over the latest five trading sessions.
+- One-month momentum over 21 trading sessions.
+- Long-term momentum over approximately 252 trading sessions when sufficient
+  history is available.
+
+These are historical close-to-close percentage changes, not forecasts. The
+API also includes a sourced research summary from the World Gold Council's Q3
+2026 Gold Demand Trends report: central-bank and ETF demand are listed as
+supporting factors, while high prices' effect on jewellery and bar/coin demand
+are noted as headwinds. Interest rates, the US dollar, ETF/central-bank flows,
+and geopolitical/fiscal risks are listed as watch factors. Research is static
+content in `fastapi_app.py`; price momentum is fetched live when the endpoint
+is requested.
+
+`GET /api/gold-outlook` returns update time, instrument and data timestamp,
+period returns, source links, research factors, and a disclaimer. If Yahoo
+Finance history is unavailable, the endpoint responds with HTTP 503 and the
+dashboard reports that the outlook could not be loaded.
+
+## Providers and calculations
 
 | Module | Responsibility |
 | --- | --- |
-| `get_gold_silver_comexlive.py` | Fetches COMEX page data and extracts gold and silver last prices, changes, closes, highs, lows, and trade times. It supports multiple parsing paths. |
-| `get_gold_silver_moneycontrol.py` | Fetches the MCX gold futures quote and Moneycontrol silver quote. MCX gold falls back to Economic Times if Moneycontrol fetch or parsing fails. |
-| `get_usdinr_moneycontrol.py` | Fetches USD/INR from Moneycontrol and falls back to a dated reference rate from exchangerate-api.com when needed. |
-| `gold_price_converter.py` | Converts USD/troy-ounce gold to INR/10g and applies the configured 15% gold import duty plus 3% GST. |
-| `silver_price_converter.py` | Converts USD/troy-ounce silver to INR/kg and applies the configured 6% silver import duty plus 3% GST. |
+| `get_gold_silver_comexlive.py` | Fetches and parses COMEX gold and silver quotes. |
+| `get_gold_silver_moneycontrol.py` | Fetches MCX Gold (Moneycontrol with Economic Times fallback), Moneycontrol Silver for the terminal UI, MCX Silver (Economic Times), and MCX Crude Oil (Economic Times). |
+| `get_usdinr_moneycontrol.py` | Fetches USD/INR from Moneycontrol with a reference-rate fallback. |
+| `gold_price_converter.py` | Converts USD/troy-ounce gold to INR/10g and calculates configured duty/GST estimates. |
+| `silver_price_converter.py` | Converts USD/troy-ounce silver to INR/kg and calculates configured duty/GST estimates. |
+| `gold_research.py` | Fetches daily GC=F history and calculates historical momentum. |
+| `stock_news_agent/providers/rss_provider.py` | Reads the configured market-news RSS feeds. |
+| `stock_news_agent/aggregator.py` | Deduplicates, filters, sorts, and limits news items. |
+| `stock_news_agent/static/nse_symbols.json` | NSE symbol/name list used for article-company matching. |
 
-MCX gold is a futures contract quote in INR per 10g. COMEX quotes are
-international prices converted using USD/INR; they are a separate market
-measure and should not be represented as an MCX contract price.
-
-External websites may block requests or change their markup. The app preserves
-individual source errors in the API response so the UI can show a warning
-without discarding successful quotes from other providers.
+MCX gold, silver, and crude oil are futures contracts, separate from COMEX
+international quotes. No application database is required for the dashboard.
 
 ## Terminal dashboard
 
@@ -136,32 +214,37 @@ the repository root:
 python precious_metals_dashboard.py
 ```
 
-It calls the same quote providers and conversion helpers as the FastAPI
-application, then prints panels and comparison/summary tables in the terminal.
+It calls the quote providers and conversion helpers directly and renders
+terminal tables. The browser-only news/sentiment and gold-outlook routes are
+implemented in the FastAPI app.
 
 ## Dependencies and configuration
 
-- `requirements.txt` contains the root app dependencies. FastAPI and Uvicorn
-  are required for the browser dashboard; Rich is used by the terminal
-  dashboard.
-- The app has no database. Browser quote results are cached in process memory;
-  restarting the server clears this cache.
-- Provider URLs, HTTP headers, and parsing logic are defined in the relevant
-  `get_*.py` modules.
-- A working network connection is required to retrieve current quotes.
+- `requirements.txt` lists dependencies for the root dashboard, including
+  FastAPI/Uvicorn, Rich, HTTPX, Beautiful Soup, and NLTK.
+- `stock_news_agent/requirements.txt` belongs to the separate news-agent
+  package and has its own dependency list.
+- Provider URLs, headers, parsing, and retries live in the provider modules.
+- No quote API credentials are required by the current implementation.
+- A network connection is required for current quotes, RSS news, and Yahoo
+  Finance history.
 
 ## Where to make changes
 
-- Browser card layout, styling, refresh button, or rendering:
+- Dashboard layout, styles, and browser rendering:
   `templates/metals_dashboard.html`.
-- API routes, payload shape, cache, source errors, or parallel fetching:
-  `fastapi_app.py`.
-- COMEX quote source or parsing: `get_gold_silver_comexlive.py`.
-- MCX gold fallback or Moneycontrol silver parsing:
-  `get_gold_silver_moneycontrol.py`.
-- USD/INR parsing and fallback: `get_usdinr_moneycontrol.py`.
-- Gold/silver unit conversion or tax math:
-  `gold_price_converter.py` and `silver_price_converter.py`.
-- Terminal-specific layout and orchestration:
-  `precious_metals_dashboard.py`.
-- Install/runtime dependencies: `requirements.txt`.
+- API routes, payloads, price orchestration, sentiment, and static research
+  factors: `fastapi_app.py`.
+- Historical gold momentum: `gold_research.py`.
+- COMEX quote parsing: `get_gold_silver_comexlive.py`.
+- MCX quote parsing: `get_gold_silver_moneycontrol.py`.
+- USD/INR fetching: `get_usdinr_moneycontrol.py`.
+- Conversion and tax math: `gold_price_converter.py` and
+  `silver_price_converter.py`.
+- RSS ingestion and aggregation:
+  `stock_news_agent/providers/rss_provider.py` and
+  `stock_news_agent/aggregator.py`.
+- NSE company symbol matching data:
+  `stock_news_agent/static/nse_symbols.json`.
+- Terminal layout and orchestration: `precious_metals_dashboard.py`.
+- Root app dependencies: `requirements.txt`.
