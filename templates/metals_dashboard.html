@@ -354,6 +354,8 @@
       const mcx = data.mcx_gold;
       const mcxSilver = data.mcx_silver;
       const crudeOil = data.mcx_crude_oil;
+      const goldbees = data.goldbees;
+      const zerodhaGoldbees = data.zerodha_goldbees;
       const crudeOilUsd = crudeOil?.usd_last == null
         ? null
         : { ...crudeOil, change: crudeOil.usd_change };
@@ -426,6 +428,37 @@
       });
 
       addQuoteCard({
+        title: "Nippon India Gold BeES",
+        source: goldbees?.source || "NSE · GOLDBEES",
+        theme: "gold",
+        quote: goldbees,
+        price: goldbees ? inr(goldbees.last) : "—",
+        unit: "Indian rupees per ETF unit",
+        stats: goldbees ? [
+          ["NSE symbol", "GOLDBEES"],
+          ["Previous close", inr(goldbees.prev_close)],
+          ["Day high", inr(goldbees.high)],
+          ["Day low", inr(goldbees.low)],
+          ["Last update", goldbees.last_trade]
+        ] : [],
+        message: data.errors?.goldbees || "NSE Gold BeES quote unavailable."
+      });
+
+      addQuoteCard({
+        title: "Zerodha Gold BeES (BSE)",
+        source: zerodhaGoldbees?.source || "Zerodha · BSE",
+        theme: "gold",
+        quote: zerodhaGoldbees,
+        price: zerodhaGoldbees ? inr(zerodhaGoldbees.last) : "—",
+        unit: "Indian rupees per ETF unit",
+        stats: zerodhaGoldbees ? [
+          ["Exchange", "BSE"],
+          ["Last update", zerodhaGoldbees.last_trade]
+        ] : [],
+        message: data.errors?.zerodha_goldbees || "Zerodha BSE Gold BeES quote unavailable."
+      });
+
+      addQuoteCard({
         title: "MCX Silver",
         source: mcxSilver?.source || "Economic Times",
         theme: "mcx",
@@ -471,7 +504,7 @@
         warningsNode.append(element("p", "warning", `${source}: ${message}`));
       }
 
-      const hasAnyQuote = Boolean(fx || gold || silver || mcx || mcxSilver || crudeOil);
+      const hasAnyQuote = Boolean(fx || gold || silver || mcx || mcxSilver || crudeOil || goldbees);
       statusNode.classList.toggle("error", !hasAnyQuote);
       const timestamp = data.updated_at ? new Date(data.updated_at).toLocaleString() : "time unavailable";
       statusNode.textContent = `Updated ${timestamp}${hasAnyQuote ? "" : " · no price sources responded"}`;

@@ -21,6 +21,10 @@ from fastapi.responses import FileResponse
 from stock_news_agent.aggregator import merge_filter_sort
 from stock_news_agent.providers.rss_provider import fetch_rss
 from gold_research import fetch_gold_momentum
+from get_goldbees_quote import (
+    fetch_goldbees_quote,
+    fetch_zerodha_bse_goldbees_quote,
+)
 from get_gold_silver_comexlive import get_gold_silver
 from get_gold_silver_moneycontrol import (
     get_mcx_crude_oil_price,
@@ -51,7 +55,7 @@ _sentiment_analyzer: Any = None
 
 app = FastAPI(
     title="Gold Info Web",
-    description="COMEX and MCX commodity prices, and USD/INR.",
+    description="COMEX, MCX and Gold BeES prices, and USD/INR.",
     version="1.0.0",
 )
 
@@ -206,6 +210,8 @@ def _collect_prices() -> dict[str, Any]:
     mcx_gold: Any = None
     mcx_silver: Any = None
     mcx_crude_oil: Any = None
+    goldbees: Any = None
+    zerodha_goldbees: Any = None
 
     fetchers = {
         "comex": get_gold_silver,
@@ -213,6 +219,8 @@ def _collect_prices() -> dict[str, Any]:
         "mcx_gold": get_mcx_gold,
         "mcx_silver": get_mcx_silver_price,
         "mcx_crude_oil": get_mcx_crude_oil_price,
+        "goldbees": fetch_goldbees_quote,
+        "zerodha_goldbees": fetch_zerodha_bse_goldbees_quote,
     }
     with ThreadPoolExecutor(max_workers=len(fetchers)) as executor:
         futures = {
@@ -232,6 +240,8 @@ def _collect_prices() -> dict[str, Any]:
     mcx_gold = results.get("mcx_gold")
     mcx_silver = results.get("mcx_silver")
     mcx_crude_oil = results.get("mcx_crude_oil")
+    goldbees = results.get("goldbees")
+    zerodha_goldbees = results.get("zerodha_goldbees")
 
     gold_data = None
     silver_data = None
@@ -303,6 +313,12 @@ def _collect_prices() -> dict[str, Any]:
         "mcx_gold": mcx_data,
         "mcx_silver": mcx_silver_data,
         "mcx_crude_oil": mcx_crude_oil_data,
+        "goldbees": _quote_dict(goldbees) if goldbees is not None else None,
+        "zerodha_goldbees": (
+            _quote_dict(zerodha_goldbees)
+            if zerodha_goldbees is not None
+            else None
+        ),
         "errors": errors,
     }
 
@@ -326,6 +342,8 @@ async def _refresh_prices(force: bool = False) -> dict[str, Any]:
             and not payload["mcx_gold"]
             and not payload["mcx_silver"]
             and not payload["mcx_crude_oil"]
+            and not payload["goldbees"]
+            and not payload["zerodha_goldbees"]
         ):
             raise HTTPException(
                 status_code=503,
