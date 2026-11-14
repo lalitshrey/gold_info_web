@@ -2,8 +2,9 @@
 
 Gold Info Web is a Python application with a FastAPI browser dashboard and a
 Rich terminal dashboard. The browser presents COMEX precious-metal quotes, MCX commodity contracts,
-Nippon India ETF Gold BeES (NSE: GOLDBEES), USD/INR, RSS headlines with
-related-stock sentiment, and a gold-market research panel.
+Nippon India Gold BeES and Silver BeES prices from NSE and Zerodha's BSE
+listing, USD/INR, RSS headlines with related-stock sentiment, and a gold-market
+research panel.
 
 ## System overview
 
@@ -19,14 +20,14 @@ flowchart TD
     Terminal["precious_metals_dashboard.py<br/>Rich terminal UI"]
 
     COMEX["get_gold_silver_comexlive.py"]
-    GoldBeES["get_goldbees_quote.py"]
+    ETFQuotes["get_goldbees_quote.py"]
     MCX["get_gold_silver_moneycontrol.py"]
     FX["get_usdinr_moneycontrol.py"]
     GoldMath["gold_price_converter.py"]
     SilverMath["silver_price_converter.py"]
     Yahoo["Yahoo Finance chart API<br/>COMEX Gold Futures GC=F"]
-    YahooETF["Yahoo Finance chart API<br/>NSE: GOLDBEES"]
-    ZerodhaBSE["Zerodha public BSE intraday quote"]
+    YahooETF["Yahoo Finance chart API<br/>NSE: GOLDBEES, SILVERBEES"]
+    ZerodhaBSE["Zerodha public BSE intraday quotes<br/>GOLDBEES, SILVERBEES"]
     WGC["World Gold Council<br/>Q3 2026 Gold Demand Trends"]
     RSS["stock_news_agent/providers/rss_provider.py"]
     Symbols["stock_news_agent/static/nse_symbols.json"]
@@ -42,11 +43,11 @@ flowchart TD
     Sentiment --> Symbols
     API --> Outlook
     Outlook --> Yahoo
-    GoldBeES --> YahooETF
-    GoldBeES --> ZerodhaBSE
+    ETFQuotes --> YahooETF
+    ETFQuotes --> ZerodhaBSE
     API -. "cited research context" .-> WGC
     Prices --> COMEX
-    Prices --> GoldBeES
+    Prices --> ETFQuotes
     Prices --> MCX
     Prices --> FX
     Prices --> GoldMath
@@ -96,7 +97,8 @@ Open `http://127.0.0.1:8000/`.
 
 1. The dashboard requests `/api/prices` when the page loads.
 2. `_collect_prices()` invokes COMEX, USD/INR, MCX Gold, MCX Silver, MCX
-   Crude Oil, and Gold BeES fetchers in a thread pool.
+   Crude Oil, and NSE/Zerodha quote fetchers for Gold BeES and Silver BeES in
+   a thread pool.
 3. Each provider error is logged and included by source key in the response;
    successful providers still contribute data.
 4. COMEX gold and silver are converted to INR only when a positive USD/INR
@@ -105,10 +107,10 @@ Open `http://127.0.0.1:8000/`.
    derives a USD-per-barrel equivalent by dividing the quote and its available
    price fields by the USD/INR rate. This is a currency conversion of the MCX
    contract, not a WTI or Brent quote.
-6. Nippon India Gold BeES is fetched as NSE ticker `GOLDBEES` through Yahoo
-   Finance. The separate Zerodha BSE card reads the public BSE intraday
-   endpoint linked from Zerodha's `BSE/GOLDBEES` ETF page. The two exchange
-   listings can have different price snapshots.
+6. Gold BeES and Silver BeES are each fetched from Yahoo Finance for the NSE
+   ticker and from Zerodha's public BSE intraday endpoint linked from each
+   `BSE/<symbol>` ETF page. The exchange listings can have different price
+   snapshots.
 7. The result is cached in memory for 60 seconds. Restarting the process
    clears the cache.
 
@@ -135,13 +137,15 @@ The price response includes these top-level fields:
   },
   "goldbees": {"last": 112.0, "source": "Yahoo Finance · NSE"},
   "zerodha_goldbees": {"last": 112.07, "source": "Zerodha · BSE"},
+  "silverbees": {"last": 168.85, "source": "Yahoo Finance · NSE"},
+  "zerodha_silverbees": {"last": 168.81, "source": "Zerodha · BSE"},
   "errors": {}
 }
 ```
 
 Fields are omitted or `null` when the source or a dependent conversion is
-unavailable. The numbers above are illustrative; the two Gold BeES values
-come from separate quote providers and can differ.
+unavailable. The numbers above are illustrative; NSE and BSE values come from
+separate quote providers and can differ.
 
 ## News and stock sentiment
 
@@ -206,7 +210,7 @@ dashboard reports that the outlook could not be loaded.
 | Module | Responsibility |
 | --- | --- |
 | `get_gold_silver_comexlive.py` | Fetches and parses COMEX gold and silver quotes. |
-| `get_goldbees_quote.py` | Fetches Yahoo Finance and Zerodha public BSE quotes for Gold BeES. |
+| `get_goldbees_quote.py` | Fetches Yahoo Finance NSE and Zerodha public BSE quotes for Gold BeES and Silver BeES. |
 | `get_gold_silver_moneycontrol.py` | Fetches MCX Gold (Moneycontrol with Economic Times fallback), Moneycontrol Silver for the terminal UI, MCX Silver (Economic Times), and MCX Crude Oil (Economic Times). |
 | `get_usdinr_moneycontrol.py` | Fetches USD/INR from Moneycontrol with a reference-rate fallback. |
 | `gold_price_converter.py` | Converts USD/troy-ounce gold to INR/10g and calculates configured duty/GST estimates. |
@@ -218,9 +222,8 @@ dashboard reports that the outlook could not be loaded.
 
 MCX gold, silver, and crude oil are futures contracts, separate from COMEX
 international quotes. No application database is required for the dashboard.
-The Nippon India Gold BeES and Zerodha BSE Gold BeES cards show the same ETF
-on different exchange listings using independent Yahoo Finance and Zerodha
-public quote sources.
+The Gold BeES and Silver BeES cards show each ETF on NSE and BSE using
+independent Yahoo Finance and Zerodha public quote sources.
 
 ## Terminal dashboard
 
@@ -252,7 +255,7 @@ implemented in the FastAPI app.
 - API routes, payloads, price orchestration, sentiment, and static research
   factors: `fastapi_app.py`.
 - Historical gold momentum: `gold_research.py`.
-- Gold BeES market quote: `get_goldbees_quote.py`.
+- Gold BeES and Silver BeES market quotes: `get_goldbees_quote.py`.
 - COMEX quote parsing: `get_gold_silver_comexlive.py`.
 - MCX quote parsing: `get_gold_silver_moneycontrol.py`.
 - USD/INR fetching: `get_usdinr_moneycontrol.py`.

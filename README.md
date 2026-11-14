@@ -2,8 +2,8 @@
 
 A Python dashboard for precious-metals prices. It displays COMEX gold and
 silver converted to INR, USD/INR, and directly fetched MCX gold, silver, and
-crude oil contract quotes, plus Nippon India Gold BeES (NSE: GOLDBEES), in a
-browser-based FastAPI app.
+crude oil contract quotes, plus Nippon India Gold BeES (NSE: GOLDBEES) and
+Silver BeES (NSE: SILVERBEES), in a browser-based FastAPI app.
 
 ## Setup
 
@@ -24,11 +24,11 @@ python fastapi_app.py
 ```
 
 Open http://127.0.0.1:8000/ in your browser. The page shows COMEX gold/silver,
-USD/INR, MCX gold, MCX silver, MCX crude oil, and Gold BeES prices,
-stock/market headlines, VADER sentiment for headlines mentioning NSE-listed
-companies, and a gold outlook based on recent/longer-term COMEX gold futures
-momentum and cited fundamental research. The gold outlook is not a forecast or
-investment advice.
+USD/INR, MCX gold, MCX silver, MCX crude oil, separate NSE and Zerodha BSE
+prices for Gold BeES and Silver BeES, stock/market headlines, VADER sentiment
+for headlines mentioning NSE-listed companies, and a gold outlook based on
+recent/longer-term COMEX gold futures momentum and cited fundamental research.
+The gold outlook is not a forecast or investment advice.
 Use **Refresh prices** to fetch updated quotes. The JSON endpoints are
 `GET /api/prices`, `POST /api/refresh`, `GET /api/news`, and
 `GET /api/gold-outlook`.
@@ -56,6 +56,10 @@ python precious_metals_dashboard.py
 - Zerodha BSE Gold BeES: Zerodha's public
   [GOLDBEES ETF page](https://zerodha.com/markets/etf/BSE/GOLDBEES/) and its
   public BSE intraday quote endpoint.
+- Nippon India Silver BeES (NSE symbol `SILVERBEES`): Yahoo Finance chart API.
+- Zerodha BSE Silver BeES: Zerodha's public
+  [SILVERBEES ETF page](https://zerodha.com/markets/etf/BSE/SILVERBEES/) and
+  its public BSE intraday quote endpoint.
 - Stock and market headlines: RSS sources configured in
   `stock_news_agent/providers/rss_provider.py`.
 - Headline sentiment: VADER. The first request downloads NLTK's
@@ -84,7 +88,7 @@ applies 6% import duty and 3% GST.
 - `templates/metals_dashboard.html` — browser dashboard UI.
 - `get_gold_silver_comexlive.py` — COMEX quote fetch and parsing.
 - `get_goldbees_quote.py` — Yahoo Finance and Zerodha public BSE quote fetchers
-  for Gold BeES.
+  for Gold BeES and Silver BeES.
 - `get_gold_silver_moneycontrol.py` — MCX gold and silver quotes, plus the
   Moneycontrol silver quote used by the terminal dashboard.
 - `get_usdinr_moneycontrol.py` — USD/INR fetch and fallback.

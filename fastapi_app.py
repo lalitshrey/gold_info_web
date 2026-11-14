@@ -23,7 +23,9 @@ from stock_news_agent.providers.rss_provider import fetch_rss
 from gold_research import fetch_gold_momentum
 from get_goldbees_quote import (
     fetch_goldbees_quote,
+    fetch_silverbees_quote,
     fetch_zerodha_bse_goldbees_quote,
+    fetch_zerodha_bse_silverbees_quote,
 )
 from get_gold_silver_comexlive import get_gold_silver
 from get_gold_silver_moneycontrol import (
@@ -212,6 +214,8 @@ def _collect_prices() -> dict[str, Any]:
     mcx_crude_oil: Any = None
     goldbees: Any = None
     zerodha_goldbees: Any = None
+    silverbees: Any = None
+    zerodha_silverbees: Any = None
 
     fetchers = {
         "comex": get_gold_silver,
@@ -221,6 +225,8 @@ def _collect_prices() -> dict[str, Any]:
         "mcx_crude_oil": get_mcx_crude_oil_price,
         "goldbees": fetch_goldbees_quote,
         "zerodha_goldbees": fetch_zerodha_bse_goldbees_quote,
+        "silverbees": fetch_silverbees_quote,
+        "zerodha_silverbees": fetch_zerodha_bse_silverbees_quote,
     }
     with ThreadPoolExecutor(max_workers=len(fetchers)) as executor:
         futures = {
@@ -242,6 +248,8 @@ def _collect_prices() -> dict[str, Any]:
     mcx_crude_oil = results.get("mcx_crude_oil")
     goldbees = results.get("goldbees")
     zerodha_goldbees = results.get("zerodha_goldbees")
+    silverbees = results.get("silverbees")
+    zerodha_silverbees = results.get("zerodha_silverbees")
 
     gold_data = None
     silver_data = None
@@ -319,6 +327,12 @@ def _collect_prices() -> dict[str, Any]:
             if zerodha_goldbees is not None
             else None
         ),
+        "silverbees": _quote_dict(silverbees) if silverbees is not None else None,
+        "zerodha_silverbees": (
+            _quote_dict(zerodha_silverbees)
+            if zerodha_silverbees is not None
+            else None
+        ),
         "errors": errors,
     }
 
@@ -344,6 +358,8 @@ async def _refresh_prices(force: bool = False) -> dict[str, Any]:
             and not payload["mcx_crude_oil"]
             and not payload["goldbees"]
             and not payload["zerodha_goldbees"]
+            and not payload["silverbees"]
+            and not payload["zerodha_silverbees"]
         ):
             raise HTTPException(
                 status_code=503,

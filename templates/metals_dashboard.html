@@ -357,6 +357,8 @@
       const crudeOil = data.mcx_crude_oil;
       const goldbees = data.goldbees;
       const zerodhaGoldbees = data.zerodha_goldbees;
+      const silverbees = data.silverbees;
+      const zerodhaSilverbees = data.zerodha_silverbees;
       const crudeOilUsd = crudeOil?.usd_last == null
         ? null
         : { ...crudeOil, change: crudeOil.usd_change };
@@ -457,6 +459,37 @@
           ["Last update", zerodhaGoldbees.last_trade]
         ] : [],
         message: data.errors?.zerodha_goldbees || "Zerodha BSE Gold BeES quote unavailable."
+      });
+
+      addQuoteCard({
+        title: "Nippon India Silver BeES",
+        source: silverbees?.source || "NSE · SILVERBEES",
+        theme: "silver",
+        quote: silverbees,
+        price: silverbees ? inr(silverbees.last) : "—",
+        unit: "Indian rupees per ETF unit",
+        stats: silverbees ? [
+          ["NSE symbol", "SILVERBEES"],
+          ["Previous close", inr(silverbees.prev_close)],
+          ["Day high", inr(silverbees.high)],
+          ["Day low", inr(silverbees.low)],
+          ["Last update", silverbees.last_trade]
+        ] : [],
+        message: data.errors?.silverbees || "NSE Silver BeES quote unavailable."
+      });
+
+      addQuoteCard({
+        title: "Zerodha Silver BeES (BSE)",
+        source: zerodhaSilverbees?.source || "Zerodha · BSE",
+        theme: "silver",
+        quote: zerodhaSilverbees,
+        price: zerodhaSilverbees ? inr(zerodhaSilverbees.last) : "—",
+        unit: "Indian rupees per ETF unit",
+        stats: zerodhaSilverbees ? [
+          ["Exchange", "BSE"],
+          ["Last update", zerodhaSilverbees.last_trade]
+        ] : [],
+        message: data.errors?.zerodha_silverbees || "Zerodha BSE Silver BeES quote unavailable."
       });
 
       addQuoteCard({

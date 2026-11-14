@@ -1,4 +1,4 @@
-"""Fetch the NSE quote for Nippon India ETF Gold BeES."""
+"""Fetch Yahoo Finance and Zerodha quotes for Nippon India Gold and Silver BeES."""
 
 from __future__ import annotations
 
@@ -11,14 +11,9 @@ from typing import Any
 import httpx
 
 
-YAHOO_GOLDBEES_URL = "https://query1.finance.yahoo.com/v8/finance/chart/GOLDBEES.NS"
-ZERODHA_GOLDBEES_PAGE_URL = "https://zerodha.com/markets/etf/BSE/GOLDBEES/"
-ZERODHA_GOLDBEES_INTRADAY_URL = "https://zerodha.com/markets/etf/intraday/BSE/{instrument_id}/"
-
-
 @dataclass
-class GoldBeESQuote:
-    """Market quote for Nippon India ETF Gold BeES."""
+class ETFQuote:
+    """Market quote for a precious-metal ETF."""
 
     last: float
     change: float | None
@@ -29,6 +24,9 @@ class GoldBeESQuote:
     low: float | None
     last_trade: str | None
     source: str = "Yahoo Finance · NSE"
+
+
+GoldBeESQuote = ETFQuote
 
 
 def _finite_number(value: Any) -> float | None:
@@ -46,11 +44,10 @@ def _positive_number(value: Any) -> float | None:
     return number if number is not None and number > 0 else None
 
 
-def fetch_goldbees_quote() -> GoldBeESQuote:
-    """Fetch the latest NSE Gold BeES quote and its previous close."""
+def _fetch_yahoo_etf_quote(symbol: str, name: str) -> ETFQuote:
     try:
         response = httpx.get(
-            YAHOO_GOLDBEES_URL,
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.NS",
             params={"range": "1d", "interval": "1m"},
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=15.0,
@@ -60,11 +57,11 @@ def fetch_goldbees_quote() -> GoldBeESQuote:
         result = payload["chart"]["result"][0]
         meta = result["meta"]
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
-        raise RuntimeError(f"Could not retrieve NSE Gold BeES quote: {error}") from error
+        raise RuntimeError(f"Could not retrieve NSE {name} quote: {error}") from error
 
     last = _positive_number(meta.get("regularMarketPrice"))
     if last is None:
-        raise RuntimeError("Yahoo Finance did not return a valid Gold BeES market price.")
+        raise RuntimeError(f"Yahoo Finance did not return a valid {name} market price.")
 
     previous_close = (
         _positive_number(meta.get("chartPreviousClose"))
@@ -98,7 +95,7 @@ def fetch_goldbees_quote() -> GoldBeESQuote:
             None,
         )
 
-    return GoldBeESQuote(
+    return ETFQuote(
         last=last,
         change=change,
         change_pct=change_pct,
@@ -110,11 +107,21 @@ def fetch_goldbees_quote() -> GoldBeESQuote:
     )
 
 
-def fetch_zerodha_bse_goldbees_quote() -> GoldBeESQuote:
-    """Fetch the BSE Gold BeES price displayed on Zerodha's public market page."""
+def fetch_goldbees_quote() -> ETFQuote:
+    """Fetch the latest NSE Gold BeES quote and its previous close."""
+    return _fetch_yahoo_etf_quote("GOLDBEES", "Gold BeES")
+
+
+def fetch_silverbees_quote() -> ETFQuote:
+    """Fetch the latest NSE Silver BeES quote and its previous close."""
+    return _fetch_yahoo_etf_quote("SILVERBEES", "Silver BeES")
+
+
+def _fetch_zerodha_bse_etf_quote(symbol: str, name: str) -> ETFQuote:
+    page_url = f"https://zerodha.com/markets/etf/BSE/{symbol}/"
     try:
         page_response = httpx.get(
-            ZERODHA_GOLDBEES_PAGE_URL,
+            page_url,
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=15.0,
         )
@@ -124,29 +131,30 @@ def fetch_zerodha_bse_goldbees_quote() -> GoldBeESQuote:
             page_response.text,
         )
         if match is None:
-            raise RuntimeError("Could not find the Gold BeES ETF ID on Zerodha's page.")
-        intraday_url = ZERODHA_GOLDBEES_INTRADAY_URL.format(
-            instrument_id=match.group(1)
+            raise RuntimeError(f"Could not find {name}'s ETF ID on Zerodha's page.")
+        intraday_url = (
+            "https://zerodha.com/markets/etf/intraday/BSE/"
+            f"{match.group(1)}/"
         )
         quote_response = httpx.get(
             intraday_url,
-            headers={"User-Agent": "Mozilla/5.0", "Referer": ZERODHA_GOLDBEES_PAGE_URL},
+            headers={"User-Agent": "Mozilla/5.0", "Referer": page_url},
             timeout=15.0,
         )
         quote_response.raise_for_status()
         payload = quote_response.json()
     except (httpx.HTTPError, ValueError, TypeError) as error:
         raise RuntimeError(
-            f"Could not retrieve Zerodha BSE Gold BeES quote: {error}"
+            f"Could not retrieve Zerodha BSE {name} quote: {error}"
         ) from error
 
     if not isinstance(payload, dict):
-        raise RuntimeError("Zerodha returned an invalid BSE Gold BeES response.")
+        raise RuntimeError(f"Zerodha returned an invalid BSE {name} response.")
 
     last = _positive_number(payload.get("ltp_to_show_bse"))
     if last is None:
         raise RuntimeError(
-            "Zerodha did not return a valid BSE Gold BeES market price."
+            f"Zerodha did not return a valid BSE {name} market price."
         )
 
     trade_time = payload.get("updated_on")
@@ -161,7 +169,7 @@ def fetch_zerodha_bse_goldbees_quote() -> GoldBeESQuote:
     else:
         last_trade = None
 
-    return GoldBeESQuote(
+    return ETFQuote(
         last=last,
         change=_finite_number(payload.get("change_to_show_bse")),
         change_pct=_finite_number(payload.get("per_change_to_show_bse")),
@@ -172,3 +180,13 @@ def fetch_zerodha_bse_goldbees_quote() -> GoldBeESQuote:
         last_trade=last_trade,
         source="Zerodha · BSE",
     )
+
+
+def fetch_zerodha_bse_goldbees_quote() -> ETFQuote:
+    """Fetch the BSE Gold BeES price displayed on Zerodha's public market page."""
+    return _fetch_zerodha_bse_etf_quote("GOLDBEES", "Gold BeES")
+
+
+def fetch_zerodha_bse_silverbees_quote() -> ETFQuote:
+    """Fetch the BSE Silver BeES price displayed on Zerodha's public market page."""
+    return _fetch_zerodha_bse_etf_quote("SILVERBEES", "Silver BeES")
