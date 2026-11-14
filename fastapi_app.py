@@ -13,10 +13,12 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from stock_news_agent.aggregator import merge_filter_sort
 from stock_news_agent.providers.rss_provider import fetch_rss
@@ -46,7 +48,14 @@ from silver_price_converter import (
 
 _BASE_DIR = Path(__file__).resolve().parent
 _DASHBOARD_FILE = _BASE_DIR / "templates" / "metals_dashboard.html"
+_STATIC_DIR = _BASE_DIR / "static"
 _NSE_SYMBOLS_FILE = _BASE_DIR / "stock_news_agent" / "static" / "nse_symbols.json"
+_GOLD_NEWS_FEED = "https://news.google.com/rss/search?" + urlencode({
+    "q": '"gold price" OR bullion OR "gold market" OR "gold demand" OR "central bank gold"',
+    "hl": "en-US",
+    "gl": "US",
+    "ceid": "US:en",
+})
 _CACHE_SECONDS = 60
 _logger = logging.getLogger(__name__)
 _cache: dict[str, Any] | None = None
@@ -56,10 +65,11 @@ _sentiment_lock = threading.Lock()
 _sentiment_analyzer: Any = None
 
 app = FastAPI(
-    title="Gold Market info",
+    title="AuricAI",
     description="COMEX, MCX and Gold BeES prices, and USD/INR.",
     version="1.0.0",
 )
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 def _sentiment_label(compound: float) -> str:
@@ -183,6 +193,32 @@ def _analyze_news(
         key=lambda stock: (-stock["article_count"], stock["symbol"])
     )
     return analyzed_articles, stock_sentiments
+
+
+def _analyze_gold_news(articles: list[Any]) -> list[dict[str, Any]]:
+    if not articles:
+        return []
+    analyzer = _get_sentiment_analyzer()
+    analyzed_articles = []
+    for article in articles:
+        text = f"{article.title}\n{article.summary or ''}".strip()
+        scores = analyzer.polarity_scores(text)
+        compound = float(scores["compound"])
+        analyzed_articles.append({
+            "title": article.title,
+            "url": str(article.url),
+            "published_at": (
+                article.published_at.isoformat()
+                if article.published_at
+                else None
+            ),
+            "source": article.source.model_dump(mode="json"),
+            "sentiment": {
+                "compound": compound,
+                "label": _sentiment_label(compound),
+            },
+        })
+    return analyzed_articles
 
 
 def _quote_dict(quote: Any) -> dict[str, Any]:
@@ -412,6 +448,40 @@ async def stock_news() -> dict[str, Any]:
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "articles": analyzed_articles,
         "stock_sentiments": stock_sentiments,
+    }
+
+
+@app.get("/api/gold-news")
+async def gold_news() -> dict[str, Any]:
+    try:
+        items = await fetch_rss([_GOLD_NEWS_FEED])
+        articles = merge_filter_sort(
+            items,
+            lookback_minutes=7 * 24 * 60,
+            limit=8,
+        )
+        gold_articles = [
+            article
+            for article in articles
+            if any(
+                term in f"{article.title}\n{article.summary or ''}".casefold()
+                for term in ("gold", "bullion", "precious metal")
+            )
+        ]
+        analyzed_articles = await asyncio.to_thread(
+            _analyze_gold_news,
+            gold_articles,
+        )
+    except Exception as error:
+        _logger.exception("Could not fetch gold-impacting news")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Gold-impacting news or sentiment analysis is temporarily unavailable: {error}",
+        ) from error
+
+    return {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "articles": analyzed_articles,
     }
 
 

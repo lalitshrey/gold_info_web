@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0b1220">
-  <title>Gold Market info | Metals Dashboard</title>
+  <title>AuricAI | Metals Dashboard</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -202,15 +202,16 @@
       .warning { border-color: #7c2d12; background: #431407; color: #fed7aa; }
     }
   </style>
+  <link href="/static/tailwind.css" rel="stylesheet">
 </head>
-<body>
-  <main>
-    <header class="topbar">
+<body class="min-w-[320px] min-h-screen bg-slate-100 text-slate-800 dark:bg-[#0b1220] dark:text-slate-200">
+  <main class="mx-auto flex min-h-dvh w-[calc(100%-3rem)] max-w-[1600px] flex-col py-6 max-[1050px]:w-[calc(100%-2.5rem)] max-[760px]:w-[min(900px,calc(100%-2.5rem))] max-[760px]:py-7 max-[600px]:w-[calc(100%-1.75rem)] max-[600px]:py-6">
+    <header class="topbar flex flex-[0_0_auto] items-center justify-between gap-6 max-[600px]:mb-5 max-[600px]:items-start max-[600px]:gap-3">
       <div>
-        <h1>Gold Market info</h1>
-        <p class="subtitle">Precious-metals prices, exchange rates, and stock market news.</p>
+        <h1 class="m-0 text-[clamp(1.8rem,3.8vw,2.55rem)] leading-[1.1] tracking-[-.05em]">AuricAI</h1>
+        <p class="subtitle mt-[9px] text-[.98rem]">Precious-metals prices, exchange rates, and stock market news.</p>
       </div>
-      <button id="refresh" class="refresh-button" type="button" aria-label="Refresh prices">
+      <button id="refresh" class="refresh-button inline-flex min-h-11 flex-[0_0_auto] items-center justify-center gap-[9px] rounded-[11px] bg-blue-700 px-4 text-[.9rem] font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 max-[600px]:h-11 max-[600px]:w-11 max-[600px]:min-w-11 max-[600px]:overflow-hidden max-[600px]:p-0 max-[600px]:text-[0]" type="button" aria-label="Refresh prices">
         <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"></path>
         </svg>
@@ -218,31 +219,31 @@
       </button>
     </header>
 
-    <div class="status-row">
+    <div class="status-row mb-3 flex min-h-[34px] items-center justify-between gap-3 max-[600px]:items-start">
       <p id="status" class="status" aria-live="polite">Loading market data…</p>
     </div>
-    <div class="dashboard-columns">
-      <div class="market-pane" aria-label="Market prices and gold research">
+    <div class="dashboard-columns grid h-[min(68vh,760px)] min-h-[420px] flex-[0_0_auto] grid-cols-2 gap-5 max-[760px]:h-auto max-[760px]:min-h-0 max-[760px]:flex-none max-[760px]:grid-cols-1">
+      <div class="market-pane min-h-0 min-w-0 overflow-y-auto overscroll-contain px-[2px] pb-5 pt-[2px] max-[760px]:overflow-visible max-[760px]:p-0" aria-label="Market prices and gold research">
         <section aria-labelledby="market-heading">
           <h2 id="market-heading">Latest quotes</h2>
-          <div id="cards" class="price-grid" aria-live="polite"></div>
+          <div id="cards" class="price-grid grid grid-cols-3 items-stretch gap-4 max-[1050px]:grid-cols-2 max-[600px]:grid-cols-1 max-[600px]:gap-3" aria-live="polite"></div>
           <div id="warnings" class="warnings" aria-live="polite"></div>
         </section>
       </div>
-      <section class="news-section" aria-labelledby="news-heading">
-        <div class="news-heading-row">
+      <section class="news-section flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[17px] border border-slate-200 bg-white/50 p-[18px] dark:border-[#263248] dark:bg-[#111b2e]/70 max-[760px]:mt-[30px] max-[760px]:h-[min(72vh,680px)] max-[760px]:min-h-[400px] max-[600px]:mt-[26px] max-[600px]:h-[min(68vh,620px)] max-[600px]:min-h-[350px] max-[600px]:p-[15px]" aria-labelledby="news-heading">
+        <div class="news-heading-row mb-[15px] flex items-baseline justify-between gap-3">
           <h2 id="news-heading">Stock &amp; Market News</h2>
           <p id="news-updated" class="news-updated" aria-live="polite"></p>
         </div>
-        <div id="stock-sentiments" class="stock-sentiments" aria-label="Related stock sentiment"></div>
+        <div id="stock-sentiments" class="stock-sentiments mb-[14px] grid grid-cols-4 gap-[10px] max-[600px]:grid-cols-2" aria-label="Related stock sentiment"></div>
         <p class="news-updated news-disclaimer">Sentiment is text-based VADER analysis, not a financial recommendation.</p>
-        <div id="news-list" class="news-list" aria-label="Scrollable stock and market headlines" tabindex="0" aria-live="polite">
+        <div id="news-list" class="news-list grid min-h-0 flex-[1_1_auto] grid-cols-1 content-start gap-3 overflow-y-auto overscroll-contain py-[2px] pr-[6px] pb-[6px] max-[600px]:gap-[10px]" aria-label="Scrollable stock and market headlines" tabindex="0" aria-live="polite">
           <p class="news-message">Loading stock news…</p>
         </div>
       </section>
     </div>
-    <section class="outlook-section" aria-labelledby="outlook-heading">
-      <div class="news-heading-row">
+    <section class="outlook-section mt-[34px] max-[600px]:mt-7" aria-labelledby="outlook-heading">
+      <div class="news-heading-row mb-[15px] flex items-baseline justify-between gap-3">
         <h2 id="outlook-heading">Gold Price Outlook &amp; Research</h2>
         <p id="outlook-updated" class="news-updated" aria-live="polite"></p>
       </div>
@@ -250,7 +251,7 @@
         <p class="news-message">Loading gold price history and research…</p>
       </div>
     </section>
-    <p class="footnote">
+    <p class="footnote mt-5 text-[.78rem] leading-[1.6]">
       COMEX quotes are shown in USD per troy ounce and converted to INR using the displayed exchange rate.
       After-tax estimates apply the configured import duty and GST. MCX crude oil is converted from INR per barrel to USD per barrel using the displayed USD/INR rate; it is not a WTI or Brent benchmark quote. MCX gold and silver are separate futures contract quotes.
     </p>
@@ -268,9 +269,13 @@
     const outlookUpdatedNode = document.getElementById("outlook-updated");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let newsAutoScroll = !reducedMotion.matches;
+    let latestGoldNews = null;
+    let goldNewsError = null;
     let newsScrollPausedUntil = 0;
     let newsScrollLastFrame = 0;
     let newsScrollFrame = 0;
+    let goldNewsScrollPausedUntil = 0;
+    let goldNewsScrollLastFrame = 0;
 
     function element(tag, className, text) {
       const result = document.createElement(tag);
@@ -296,7 +301,7 @@
     }
 
     function appendStats(list, entries) {
-      const stats = element("dl", "stats");
+      const stats = element("dl", "stats grid grid-cols-2 gap-x-3 gap-y-[14px] pt-5");
       for (const [label, value] of entries) {
         if (value == null || value === "" || value === "—") continue;
         const stat = element("div", "stat");
@@ -324,8 +329,8 @@
     }
 
     function addQuoteCard({ title, source, theme, quote, price, unit, stats = [], message }) {
-      const card = element("article", `quote-card ${theme || ""}`);
-      const heading = element("div", "card-header");
+      const card = element("article", `quote-card ${theme || ""} relative flex min-w-0 flex-col overflow-hidden rounded-[17px] border border-slate-200 bg-white/[0.94] p-5 shadow-[0_8px_26px_rgb(15_23_42_/_0.05)] dark:border-[#263248] dark:bg-[#111b2e] dark:shadow-[0_8px_26px_rgb(0_0_0_/_0.12)] max-[600px]:min-h-0 max-[600px]:p-[18px]`);
+      const heading = element("div", "card-header flex min-w-0 items-center justify-between gap-2");
       heading.append(element("h3", "card-title", title));
       if (source) heading.append(element("span", "source-badge", source));
       card.append(heading);
@@ -336,7 +341,7 @@
         return;
       }
 
-      const mainQuote = element("div", "quote-main");
+      const mainQuote = element("div", "quote-main mt-[21px] min-w-0 max-[600px]:mt-[17px]");
       mainQuote.append(element("span", "price", price));
       mainQuote.append(element("span", "price-unit", unit));
       card.append(mainQuote);
@@ -584,7 +589,7 @@
         ));
       } else {
         for (const article of articles) {
-          const item = element("article", "news-item");
+          const item = element("article", "news-item min-w-0 rounded-[14px] border border-slate-200 bg-white/[0.94] p-4 shadow-[0_6px_20px_rgb(15_23_42_/_0.04)] dark:border-[#263248] dark:bg-[#111b2e]");
           const meta = element("div", "news-meta");
           meta.append(element("span", "news-source", article.source?.name || "Market news"));
           if (article.published_at) {
@@ -647,6 +652,28 @@
       newsScrollFrame = window.requestAnimationFrame(autoScrollNews);
     }
 
+    function autoScrollGoldNews(timestamp) {
+      if (timestamp - goldNewsScrollLastFrame >= 30) {
+        goldNewsScrollLastFrame = timestamp;
+        const goldNewsList = document.getElementById("gold-news-list");
+        const now = performance.now();
+        if (
+          !reducedMotion.matches &&
+          now >= goldNewsScrollPausedUntil &&
+          goldNewsList &&
+          goldNewsList.scrollHeight > goldNewsList.clientHeight
+        ) {
+          if (goldNewsList.scrollTop + goldNewsList.clientHeight >= goldNewsList.scrollHeight - 1) {
+            goldNewsList.scrollTop = 0;
+            goldNewsScrollPausedUntil = now + 1400;
+          } else {
+            goldNewsList.scrollTop += 0.6;
+          }
+        }
+      }
+      window.requestAnimationFrame(autoScrollGoldNews);
+    }
+
     function pauseNewsScrollTemporarily() {
       newsScrollPausedUntil = performance.now() + 5000;
     }
@@ -659,6 +686,18 @@
       newsScrollPausedUntil = performance.now() + 2500;
     }
 
+    function pauseGoldNewsScrollTemporarily() {
+      goldNewsScrollPausedUntil = performance.now() + 5000;
+    }
+
+    function pauseGoldNewsScrollForInteraction() {
+      goldNewsScrollPausedUntil = Number.POSITIVE_INFINITY;
+    }
+
+    function resumeGoldNewsScrollAfterInteraction() {
+      goldNewsScrollPausedUntil = performance.now() + 2500;
+    }
+
     newsListNode.addEventListener("pointerenter", pauseNewsScrollForInteraction);
     newsListNode.addEventListener("pointerleave", resumeNewsScrollAfterInteraction);
     newsListNode.addEventListener("focusin", pauseNewsScrollForInteraction);
@@ -668,10 +707,38 @@
     for (const eventName of ["wheel", "touchstart", "keydown"]) {
       newsListNode.addEventListener(eventName, pauseNewsScrollTemporarily, { passive: true });
     }
+    document.addEventListener("pointerover", (event) => {
+      if (event.target.closest("#gold-news-list")) pauseGoldNewsScrollForInteraction();
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (
+        event.target.closest("#gold-news-list") &&
+        !event.relatedTarget?.closest("#gold-news-list")
+      ) {
+        resumeGoldNewsScrollAfterInteraction();
+      }
+    });
+    document.addEventListener("focusin", (event) => {
+      if (event.target.closest("#gold-news-list")) pauseGoldNewsScrollForInteraction();
+    });
+    document.addEventListener("focusout", (event) => {
+      if (
+        event.target.closest("#gold-news-list") &&
+        !event.relatedTarget?.closest("#gold-news-list")
+      ) {
+        resumeGoldNewsScrollAfterInteraction();
+      }
+    });
+    for (const eventName of ["wheel", "touchstart", "keydown"]) {
+      document.addEventListener(eventName, (event) => {
+        if (event.target.closest("#gold-news-list")) pauseGoldNewsScrollTemporarily();
+      }, { passive: true });
+    }
     reducedMotion.addEventListener("change", () => {
       newsAutoScroll = !reducedMotion.matches;
     });
     newsScrollFrame = window.requestAnimationFrame(autoScrollNews);
+    window.requestAnimationFrame(autoScrollGoldNews);
 
     function renderGoldOutlook(data) {
       outlookContentNode.replaceChildren();
@@ -683,31 +750,44 @@
         ["Long-term momentum", momentum.long_term]
       ];
 
+      const momentumCard = element("article", "outlook-card");
+      momentumCard.append(element("h3", "", "Gold price momentum"));
       for (const [heading, period] of periods) {
-        const card = element("article", "outlook-card");
-        card.append(element("h3", "", heading));
+        const periodRow = element(
+          "section",
+          "border-b border-slate-200 py-3 last:border-0 dark:border-slate-700"
+        );
+        const periodHeader = element(
+          "div",
+          "flex flex-wrap items-baseline justify-between gap-2"
+        );
+        periodHeader.append(element("h4", "m-0 text-sm font-semibold", heading));
         if (!period) {
-          card.append(element("p", "outlook-detail", "Not enough historical prices to calculate this period."));
+          periodRow.append(periodHeader);
+          periodRow.append(element("p", "outlook-detail mt-2", "Not enough historical prices to calculate this period."));
         } else {
           const direction = period.direction;
           const directionText = direction === "up" ? "Upward" : direction === "down" ? "Downward" : "Flat";
-          const row = element("div", "outlook-direction");
-          row.append(element("span", `outlook-label ${direction}`, `${directionText} trend`));
-          row.append(element(
+          periodHeader.append(element("span", `outlook-label ${direction} !text-base`, `${directionText} trend`));
+          periodHeader.append(element(
             "span",
-            "outlook-return",
+            "outlook-return text-sm",
             `${period.change_pct > 0 ? "+" : ""}${number(period.change_pct, 2)}%`
           ));
-          card.append(row);
-          card.append(element(
+          periodRow.append(periodHeader);
+          periodRow.append(element(
             "p",
-            "outlook-detail",
+            "outlook-detail mt-1",
             `${period.label}: $${number(period.start_close_usd_oz)} to $${number(period.latest_close_usd_oz)} per troy ounce, using ${period.sessions} trading sessions.`
           ));
         }
-        grid.append(card);
+        momentumCard.append(periodRow);
       }
+      grid.append(momentumCard);
       outlookContentNode.append(grid);
+
+      grid.append(createGoldNewsCard());
+      showGoldNewsState();
 
       const researchCard = element("article", "research-card");
       researchCard.append(element("h3", "", "Long-term fundamental research"));
@@ -728,7 +808,15 @@
 
       const watch = element("div", "watch-factors");
       for (const factor of research.watch_factors) {
-        watch.append(element("span", "watch-factor", `Watch: ${factor}`));
+        const watchLink = element(
+          "a",
+          "inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[.7rem] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 hover:shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-900/60",
+          `Watch: ${factor}`
+        );
+        watchLink.href = `https://news.google.com/search?q=${encodeURIComponent(factor)}`;
+        watchLink.target = "_blank";
+        watchLink.rel = "noopener noreferrer";
+        watch.append(watchLink);
       }
       researchCard.append(watch);
 
@@ -767,6 +855,126 @@
         outlookContentNode.replaceChildren(
           element("p", "news-message", `Could not load gold research: ${error.message}`)
         );
+        const grid = element("div", "outlook-grid");
+        grid.append(createGoldNewsCard());
+        outlookContentNode.append(grid);
+        showGoldNewsState();
+      }
+    }
+
+    function createGoldNewsCard() {
+      const card = element(
+        "article",
+        "outlook-card !p-4 max-[600px]:!p-[18px]"
+      );
+      const header = element(
+        "div",
+        "flex flex-wrap items-baseline justify-between gap-2"
+      );
+      header.append(element("h3", "", "Gold-impacting news"));
+      header.append(element(
+        "span",
+        "text-xs text-slate-500 dark:text-slate-400",
+        "Recent headlines · sentiment is not a forecast"
+      ));
+      card.append(header);
+      const list = element(
+        "div",
+        "mt-3 grid max-h-56 gap-2 overflow-y-auto overscroll-contain pr-1"
+      );
+      list.id = "gold-news-list";
+      list.tabIndex = 0;
+      list.setAttribute("aria-label", "Scrollable gold-impacting headlines");
+      list.append(element("p", "news-message", "Loading gold-market news…"));
+      card.append(list);
+      return card;
+    }
+
+    function showGoldNewsState() {
+      if (latestGoldNews) {
+        renderGoldNews(latestGoldNews);
+      } else if (goldNewsError) {
+        renderGoldNewsError(goldNewsError);
+      }
+    }
+
+    function renderGoldNewsError(message) {
+      goldNewsError = message;
+      const goldNewsList = document.getElementById("gold-news-list");
+      if (goldNewsList) {
+        goldNewsList.replaceChildren(
+          element("p", "news-message", `Could not load gold-market news: ${message}`)
+        );
+      }
+    }
+
+    function renderGoldNews(data) {
+      latestGoldNews = data;
+      goldNewsError = null;
+      const goldNewsList = document.getElementById("gold-news-list");
+      if (!goldNewsList) return;
+      goldNewsList.replaceChildren();
+
+      const articles = data.articles || [];
+      if (articles.length === 0) {
+        goldNewsList.append(element(
+          "p",
+          "news-message",
+          "No recent gold-market headlines were found."
+        ));
+        return;
+      }
+
+      for (const article of articles) {
+        const item = element(
+          "article",
+          "rounded-xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/40"
+        );
+        const meta = element(
+          "div",
+          "mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+        );
+        meta.append(element("span", "font-semibold text-blue-700 dark:text-blue-300", article.source?.name || "Market news"));
+        if (article.published_at) {
+          const published = new Date(article.published_at);
+          if (!Number.isNaN(published.getTime())) {
+            meta.append(element("time", "", published.toLocaleDateString()));
+          }
+        }
+        const sentiment = article.sentiment;
+        if (sentiment) {
+          meta.append(element(
+            "span",
+            `sentiment-badge sentiment-${sentiment.label.toLowerCase()}`,
+            `${sentiment.label} tone · ${Number(sentiment.compound).toFixed(2)}`
+          ));
+        }
+        const link = element(
+          "a",
+          "text-sm font-semibold leading-snug text-slate-800 hover:text-blue-700 hover:underline dark:text-slate-100 dark:hover:text-blue-300",
+          article.title || "Untitled article"
+        );
+        link.href = article.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        item.append(meta, link);
+        goldNewsList.append(item);
+      }
+    }
+
+    async function loadGoldNews() {
+      try {
+        const response = await fetch("/api/gold-news", {
+          headers: { "Accept": "application/json" }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const detail = typeof data.detail === "string" ? data.detail : "Gold news request failed.";
+          throw new Error(detail);
+        }
+        renderGoldNews(data);
+      } catch (error) {
+        renderGoldNewsError(error.message);
       }
     }
 
@@ -815,6 +1023,7 @@
     loadPrices();
     loadNews();
     loadGoldOutlook();
+    loadGoldNews();
   </script>
 </body>
 </html>

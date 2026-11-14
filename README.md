@@ -1,4 +1,4 @@
-# Gold Market info
+# AuricAI
 
 A Python dashboard for precious-metals prices. It displays COMEX gold and
 silver converted to INR, USD/INR, and directly fetched MCX gold, silver, and
@@ -8,6 +8,15 @@ Silver BeES (NSE: SILVERBEES), in a browser-based FastAPI app.
 ## Setup
 
 Python 3.10 or later is recommended.
+The browser UI uses Tailwind CSS. Install Node.js and npm, then build the local
+stylesheet before starting the app:
+
+```bash
+npm install
+npm run build:css
+```
+
+Install the Python dependencies separately:
 
 ```bash
 python3 -m venv .venv
@@ -31,7 +40,9 @@ recent/longer-term COMEX gold futures momentum and cited fundamental research.
 The gold outlook is not a forecast or investment advice.
 Use **Refresh prices** to fetch updated quotes. The JSON endpoints are
 `GET /api/prices`, `POST /api/refresh`, `GET /api/news`, and
-`GET /api/gold-outlook`.
+`GET /api/gold-outlook`, and `GET /api/gold-news`. The gold outlook also shows
+recent gold-market headlines with sentiment labels; these reflect headline
+text tone and are not price forecasts or investment advice.
 
 Alternatively, run the app with Uvicorn:
 

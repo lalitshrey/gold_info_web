@@ -1,6 +1,6 @@
-# Gold Market info Architecture
+# AuricAI Architecture
 
-Gold Market info is a Python application with a FastAPI browser dashboard and a
+AuricAI is a Python application with a FastAPI browser dashboard and a
 Rich terminal dashboard. The browser presents COMEX precious-metal quotes, MCX commodity contracts,
 Nippon India Gold BeES and Silver BeES prices from NSE and Zerodha's BSE
 listing, USD/INR, RSS headlines with related-stock sentiment, and a gold-market
@@ -36,6 +36,7 @@ flowchart TD
     UI -->|"GET /api/prices; POST /api/refresh"| API
     UI -->|"GET /api/news"| API
     UI -->|"GET /api/gold-outlook"| API
+    UI -->|"GET /api/gold-news"| API
     API --> Prices
     API --> News
     News --> RSS
@@ -69,9 +70,11 @@ does not hide the others.
 ### Entry point and run
 
 `fastapi_app.py` creates the FastAPI application object `app`. Run from the
-repository root:
+repository root after building the Tailwind stylesheet:
 
 ```bash
+npm install
+npm run build:css
 python fastapi_app.py
 ```
 
@@ -88,10 +91,16 @@ Open `http://127.0.0.1:8000/`.
 | Route | Purpose |
 | --- | --- |
 | `GET /` | Serves `templates/metals_dashboard.html`. |
+| `GET /static/tailwind.css` | Serves the locally compiled Tailwind stylesheet. |
 | `GET /api/prices` | Returns cached quotes or fetches a new set when the 60-second cache expires. |
 | `POST /api/refresh` | Forces a new parallel quote fetch and refreshes the in-process cache. |
 | `GET /api/news` | Fetches, deduplicates, and filters recent RSS news; adds VADER sentiment and related NSE stocks. |
 | `GET /api/gold-outlook` | Returns COMEX gold futures momentum and cited long-term demand research. |
+| `GET /api/gold-news` | Returns recent Google News RSS results matching gold-market terms with VADER headline sentiment. |
+
+The UI uses Tailwind utility classes for layout, spacing, and responsive
+behavior. `static/tailwind.input.css` and `tailwind.config.js` are the build
+inputs; `npm run build:css` writes the stylesheet served at `/static/tailwind.css`.
 
 ### Quote flow
 
@@ -204,6 +213,10 @@ is requested.
 period returns, source links, research factors, and a disclaimer. If Yahoo
 Finance history is unavailable, the endpoint responds with HTTP 503 and the
 dashboard reports that the outlook could not be loaded.
+
+The outlook grid's fourth card shows up to eight gold-related headlines from a
+Google News RSS search, each linked to its publisher and labeled with VADER
+headline tone. Sentiment is informational and is not a gold-price forecast.
 
 ## Providers and calculations
 
