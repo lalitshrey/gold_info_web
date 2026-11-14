@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +20,7 @@ from fastapi.responses import FileResponse
 
 from stock_news_agent.aggregator import merge_filter_sort
 from stock_news_agent.providers.rss_provider import fetch_rss
+from gold_research import fetch_gold_momentum
 from get_gold_silver_comexlive import get_gold_silver
 from get_gold_silver_moneycontrol import (
     get_mcx_crude_oil_price,
@@ -35,17 +40,143 @@ from silver_price_converter import (
 
 _BASE_DIR = Path(__file__).resolve().parent
 _DASHBOARD_FILE = _BASE_DIR / "templates" / "metals_dashboard.html"
+_NSE_SYMBOLS_FILE = _BASE_DIR / "stock_news_agent" / "static" / "nse_symbols.json"
 _CACHE_SECONDS = 60
 _logger = logging.getLogger(__name__)
 _cache: dict[str, Any] | None = None
 _cache_updated_at: datetime | None = None
 _refresh_lock = asyncio.Lock()
+_sentiment_lock = threading.Lock()
+_sentiment_analyzer: Any = None
 
 app = FastAPI(
     title="Gold Info Web",
     description="COMEX and MCX commodity prices, and USD/INR.",
     version="1.0.0",
 )
+
+
+def _sentiment_label(compound: float) -> str:
+    if compound >= 0.05:
+        return "Positive"
+    if compound <= -0.05:
+        return "Negative"
+    return "Neutral"
+
+
+def _get_sentiment_analyzer() -> Any:
+    global _sentiment_analyzer
+    with _sentiment_lock:
+        if _sentiment_analyzer is not None:
+            return _sentiment_analyzer
+
+        import nltk
+        from nltk.sentiment import SentimentIntensityAnalyzer
+
+        try:
+            nltk.data.find("sentiment/vader_lexicon.zip")
+        except LookupError:
+            if not nltk.download("vader_lexicon", quiet=True):
+                raise RuntimeError("Could not download the VADER sentiment lexicon.")
+
+        _sentiment_analyzer = SentimentIntensityAnalyzer()
+        return _sentiment_analyzer
+
+
+@lru_cache(maxsize=1)
+def _stock_matchers() -> tuple[
+    tuple[str, str, tuple[re.Pattern[str], ...]], ...
+]:
+    with _NSE_SYMBOLS_FILE.open(encoding="utf-8") as symbols_file:
+        stocks = json.load(symbols_file)
+
+    matchers: list[tuple[str, str, re.Pattern[str]]] = []
+    for stock in stocks:
+        symbol = stock["symbol"]
+        name = stock["name"]
+        aliases = {
+            name,
+            re.sub(
+                r"(?:\s+(?:ltd\.?|limited|corp\.?|corporation|inc\.?|incorporated|company|co\.?))+$",
+                "",
+                name,
+                flags=re.IGNORECASE,
+            ).strip(),
+        }
+        patterns = [
+            re.compile(
+                r"(?<!\w)" + r"\s+".join(re.escape(word) for word in alias.split()) + r"(?!\w)",
+                re.IGNORECASE,
+            )
+            for alias in aliases
+            if len(alias) >= 5
+        ]
+        if len(symbol) >= 3:
+            patterns.append(
+                re.compile(rf"(?<![A-Z0-9])\$?{re.escape(symbol)}(?![A-Z0-9])")
+            )
+        matchers.append((symbol, name, tuple(patterns)))
+    return tuple(matchers)
+
+
+def _analyze_news(
+    articles: list[Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    analyzer = _get_sentiment_analyzer()
+    ticker_scores: dict[str, list[float]] = {}
+    ticker_names: dict[str, str] = {}
+    analyzed_articles: list[dict[str, Any]] = []
+
+    for article in articles:
+        text = f"{article.title}\n{article.summary or ''}".strip()
+        scores = analyzer.polarity_scores(text)
+        compound = float(scores["compound"])
+        sentiment = {
+            "compound": compound,
+            "label": _sentiment_label(compound),
+            "positive": float(scores["pos"]),
+            "neutral": float(scores["neu"]),
+            "negative": float(scores["neg"]),
+        }
+        related_stocks = [
+            {"symbol": symbol, "name": name}
+            for symbol, name, patterns in _stock_matchers()
+            if any(pattern.search(text) for pattern in patterns)
+        ]
+        for stock in related_stocks:
+            symbol = stock["symbol"]
+            ticker_scores.setdefault(symbol, []).append(compound)
+            ticker_names[symbol] = stock["name"]
+
+        analyzed_articles.append(
+            {
+                "title": article.title,
+                "url": str(article.url),
+                "published_at": (
+                    article.published_at.isoformat()
+                    if article.published_at
+                    else None
+                ),
+                "source": article.source.model_dump(mode="json"),
+                "related_stocks": related_stocks,
+                "sentiment": sentiment,
+            }
+        )
+
+    stock_sentiments = []
+    for symbol, scores in ticker_scores.items():
+        average = sum(scores) / len(scores)
+        stock_sentiments.append({
+            "symbol": symbol,
+            "name": ticker_names[symbol],
+            "article_count": len(scores),
+            "compound": average,
+            "label": _sentiment_label(average),
+        })
+    stock_sentiments.sort(
+        key=lambda stock: (-stock["article_count"], stock["symbol"])
+    )
+    return analyzed_articles, stock_sentiments
 
 
 def _quote_dict(quote: Any) -> dict[str, Any]:
@@ -232,22 +363,68 @@ async def stock_news() -> dict[str, Any]:
             lookback_minutes=7 * 24 * 60,
             limit=12,
         )
+        analyzed_articles, stock_sentiments = await asyncio.to_thread(
+            _analyze_news,
+            articles,
+        )
     except Exception as error:
         _logger.exception("Could not fetch stock and market news")
         raise HTTPException(
             status_code=503,
-            detail="Stock news is temporarily unavailable.",
+            detail=f"Stock news or sentiment analysis is temporarily unavailable: {error}",
         ) from error
 
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "articles": [
-            item.model_dump(
-                mode="json",
-                include={"title", "url", "published_at", "source"},
-            )
-            for item in articles
-        ],
+        "articles": analyzed_articles,
+        "stock_sentiments": stock_sentiments,
+    }
+
+
+@app.get("/api/gold-outlook")
+async def gold_outlook() -> dict[str, Any]:
+    try:
+        momentum = await asyncio.to_thread(fetch_gold_momentum)
+    except RuntimeError as error:
+        _logger.warning("Could not build gold outlook: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Gold price history is temporarily unavailable.",
+        ) from error
+
+    return {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "momentum": momentum,
+        "research": {
+            "source": "World Gold Council",
+            "published": "2026-11-03",
+            "url": (
+                "https://www.gold.org/goldhub/research/"
+                "gold-demand-trends/gold-demand-trends-q3-2026"
+            ),
+            "long_term_assessment": (
+                "Mixed: strong institutional demand supports gold, while "
+                "high prices are weighing on jewellery and retail demand."
+            ),
+            "supporting_factors": [
+                "Central banks bought 321 tonnes in Q3 2026, up 42% year over year.",
+                "Gold ETFs added 211 tonnes in Q3 after Q2 outflows.",
+            ],
+            "headwinds": [
+                "Jewellery demand fell 17% year over year as high prices constrained affordability.",
+                "Bar and coin demand fell 19% year over year as buyers waited for a clearer price trend.",
+            ],
+            "watch_factors": [
+                "US real interest rates and Federal Reserve policy",
+                "US dollar direction",
+                "Central-bank purchases and gold ETF flows",
+                "Geopolitical and fiscal-risk developments",
+            ],
+        },
+        "disclaimer": (
+            "Historical momentum and cited research are not price forecasts or "
+            "investment advice."
+        ),
     }
 
 

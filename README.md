@@ -23,9 +23,13 @@ python fastapi_app.py
 ```
 
 Open http://127.0.0.1:8000/ in your browser. The page shows COMEX gold/silver,
-USD/INR, MCX gold, MCX silver, MCX crude oil prices, and stock/market headlines.
+USD/INR, MCX gold, MCX silver, MCX crude oil prices, stock/market headlines,
+VADER sentiment for headlines mentioning NSE-listed companies, and a gold
+outlook based on recent/longer-term COMEX gold futures momentum and cited
+fundamental research. The gold outlook is not a forecast or investment advice.
 Use **Refresh prices** to fetch updated quotes. The JSON endpoints are
-`GET /api/prices`, `POST /api/refresh`, and `GET /api/news`.
+`GET /api/prices`, `POST /api/refresh`, `GET /api/news`, and
+`GET /api/gold-outlook`.
 
 Alternatively, run the app with Uvicorn:
 
@@ -48,6 +52,14 @@ python precious_metals_dashboard.py
 - MCX crude oil: [Economic Times](https://economictimes.indiatimes.com/commoditysummary/symbol-CRUDEOIL.cms).
 - Stock and market headlines: RSS sources configured in
   `stock_news_agent/providers/rss_provider.py`.
+- Headline sentiment: VADER. The first request downloads NLTK's
+  `vader_lexicon` if it is not already available. Sentiment is a text signal,
+  not investment advice.
+- Gold momentum: daily COMEX gold futures (`GC=F`) closes from Yahoo Finance;
+  the dashboard compares five trading sessions, one month, and approximately
+  one year. This is historical momentum, not a price forecast.
+- Long-term gold demand research: World Gold Council's Q3 2026
+  [Gold Demand Trends](https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-q3-2026).
 - USD/INR: Moneycontrol, with a dated reference-rate fallback when unavailable.
 
 The MCX gold, silver, and crude oil quotes are futures contract prices. Crude

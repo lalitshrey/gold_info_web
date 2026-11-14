@@ -89,6 +89,39 @@
     .news-title a { color: inherit; text-decoration: none; }
     .news-title a:hover { color: #1d4ed8; text-decoration: underline; text-underline-offset: 3px; }
     .news-message { grid-column: 1 / -1; margin: 0; padding: 16px 18px; border: 1px solid #e2e8f0; border-radius: 14px; color: #64748b; font-size: .86rem; line-height: 1.5; }
+    .outlook-section { margin: 34px 0 0; }
+    .outlook-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .outlook-card { min-width: 0; padding: 19px; border: 1px solid #e2e8f0; border-radius: 15px; background: rgb(255 255 255 / 94%); box-shadow: 0 6px 20px rgb(15 23 42 / 4%); }
+    .outlook-card h3 { margin: 0; font-size: .95rem; }
+    .outlook-direction { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 13px 0 7px; }
+    .outlook-label { font-size: 1.15rem; font-weight: 780; letter-spacing: -.025em; }
+    .outlook-label.up { color: #15803d; }
+    .outlook-label.down { color: #b91c1c; }
+    .outlook-label.flat, .outlook-label.mixed { color: #64748b; }
+    .outlook-return { font-size: .92rem; font-variant-numeric: tabular-nums; font-weight: 700; }
+    .outlook-detail { margin: 0; color: #64748b; font-size: .78rem; line-height: 1.5; }
+    .research-card { margin-top: 14px; padding: 19px; border: 1px solid #e2e8f0; border-radius: 15px; background: rgb(255 255 255 / 94%); }
+    .research-card h3 { margin: 0 0 8px; font-size: .98rem; }
+    .research-summary { margin: 0 0 15px; color: #475569; font-size: .86rem; line-height: 1.5; }
+    .research-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    .research-columns h4 { margin: 0 0 8px; font-size: .8rem; }
+    .research-columns ul { margin: 0; padding-left: 18px; color: #475569; font-size: .78rem; line-height: 1.55; }
+    .watch-factors { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
+    .watch-factor { padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 999px; color: #475569; font-size: .7rem; }
+    .research-source { margin: 14px 0 0; color: #64748b; font-size: .75rem; }
+    .research-source a { color: #1d4ed8; font-weight: 650; }
+    .stock-sentiments { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .stock-sentiment { min-width: 0; padding: 13px 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+    .stock-sentiment-name { display: block; overflow: hidden; color: #64748b; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+    .stock-sentiment-symbol { display: block; margin-top: 3px; font-size: .96rem; font-weight: 750; }
+    .stock-sentiment-bottom { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-top: 8px; font-size: .75rem; }
+    .sentiment-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: .7rem; font-weight: 720; white-space: nowrap; }
+    .sentiment-positive { background: #dcfce7; color: #166534; }
+    .sentiment-negative { background: #fee2e2; color: #991b1b; }
+    .sentiment-neutral { background: #f1f5f9; color: #475569; }
+    .news-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+    .related-label { color: #64748b; font-size: .7rem; }
+    .ticker-tag { padding: 3px 7px; border: 1px solid #dbeafe; border-radius: 6px; color: #1d4ed8; font-size: .68rem; font-weight: 700; }
     [hidden] { display: none !important; }
     @media (max-width: 1050px) {
       main { width: min(900px, calc(100% - 40px)); }
@@ -105,6 +138,9 @@
       .price-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
       .news-section { margin-top: 32px; }
       .news-list { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .stock-sentiments { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .outlook-section { margin-top: 28px; }
+      .outlook-grid, .research-columns { grid-template-columns: minmax(0, 1fr); }
       .quote-card { min-height: 0; padding: 18px; }
       .quote-main { margin-top: 17px; }
       .price { font-size: clamp(2rem, 10vw, 2.55rem); }
@@ -125,6 +161,17 @@
       .news-item, .news-message { border-color: #263248; background: #111b2e; }
       .news-updated, .news-meta { color: #94a3b8; }
       .news-source, .news-title a:hover { color: #93c5fd; }
+      .stock-sentiment { border-color: #263248; background: #111b2e; }
+      .sentiment-positive { background: #14532d; color: #bbf7d0; }
+      .sentiment-negative { background: #7f1d1d; color: #fecaca; }
+      .sentiment-neutral { background: #334155; color: #e2e8f0; }
+      .ticker-tag { border-color: #1e3a8a; color: #bfdbfe; }
+      .outlook-card, .research-card { border-color: #263248; background: #111b2e; }
+      .outlook-label.up { color: #86efac; }
+      .outlook-label.down { color: #fca5a5; }
+      .outlook-label.flat, .outlook-label.mixed, .outlook-detail, .research-summary, .research-columns ul, .research-source { color: #94a3b8; }
+      .watch-factor { border-color: #334155; color: #cbd5e1; }
+      .research-source a { color: #93c5fd; }
       .change.up { color: #86efac; }
       .change.down, .error { color: #fca5a5; }
       .change.neutral { color: #94a3b8; }
@@ -156,11 +203,22 @@
       <div id="cards" class="price-grid" aria-live="polite"></div>
       <div id="warnings" class="warnings" aria-live="polite"></div>
     </section>
+    <section class="outlook-section" aria-labelledby="outlook-heading">
+      <div class="news-heading-row">
+        <h2 id="outlook-heading">Gold Price Outlook &amp; Research</h2>
+        <p id="outlook-updated" class="news-updated" aria-live="polite"></p>
+      </div>
+      <div id="outlook-content">
+        <p class="news-message">Loading gold price history and research…</p>
+      </div>
+    </section>
     <section class="news-section" aria-labelledby="news-heading">
       <div class="news-heading-row">
         <h2 id="news-heading">Stock &amp; Market News</h2>
         <p id="news-updated" class="news-updated" aria-live="polite"></p>
       </div>
+      <div id="stock-sentiments" class="stock-sentiments" aria-label="Related stock sentiment"></div>
+      <p class="news-updated">Sentiment is text-based VADER analysis, not a financial recommendation.</p>
       <div id="news-list" class="news-list" aria-live="polite">
         <p class="news-message">Loading stock news…</p>
       </div>
@@ -178,6 +236,9 @@
     const refreshButton = document.getElementById("refresh");
     const newsListNode = document.getElementById("news-list");
     const newsUpdatedNode = document.getElementById("news-updated");
+    const stockSentimentsNode = document.getElementById("stock-sentiments");
+    const outlookContentNode = document.getElementById("outlook-content");
+    const outlookUpdatedNode = document.getElementById("outlook-updated");
 
     function element(tag, className, text) {
       const result = document.createElement(tag);
@@ -386,6 +447,36 @@
 
     function renderNews(data) {
       newsListNode.replaceChildren();
+      stockSentimentsNode.replaceChildren();
+      const stockSentiments = data.stock_sentiments || [];
+      if (stockSentiments.length === 0) {
+        stockSentimentsNode.append(element(
+          "p",
+          "news-message",
+          "No NSE-listed stocks were identified in these headlines."
+        ));
+      } else {
+        for (const stock of stockSentiments.slice(0, 8)) {
+          const card = element("article", "stock-sentiment");
+          card.append(element("span", "stock-sentiment-name", stock.name));
+          card.append(element("span", "stock-sentiment-symbol", stock.symbol));
+          const bottom = element("div", "stock-sentiment-bottom");
+          const sentimentClass = stock.label.toLowerCase();
+          bottom.append(element(
+            "span",
+            `sentiment-badge sentiment-${sentimentClass}`,
+            `${stock.label} · ${Number(stock.compound).toFixed(2)}`
+          ));
+          bottom.append(element(
+            "span",
+            "news-updated",
+            `${stock.article_count} ${stock.article_count === 1 ? "article" : "articles"}`
+          ));
+          card.append(bottom);
+          stockSentimentsNode.append(card);
+        }
+      }
+
       const articles = data.articles || [];
       if (articles.length === 0) {
         newsListNode.append(element(
@@ -410,7 +501,24 @@
           link.target = "_blank";
           link.rel = "noopener noreferrer";
           title.append(link);
+          const sentiment = article.sentiment;
+          if (sentiment) {
+            const badge = element(
+              "span",
+              `sentiment-badge sentiment-${sentiment.label.toLowerCase()}`,
+              `${sentiment.label} · ${Number(sentiment.compound).toFixed(2)}`
+            );
+            meta.append(badge);
+          }
           item.append(meta, title);
+          if (article.related_stocks?.length) {
+            const tags = element("div", "news-tags");
+            tags.append(element("span", "related-label", "Related stocks:"));
+            for (const stock of article.related_stocks) {
+              tags.append(element("span", "ticker-tag", stock.symbol));
+            }
+            item.append(tags);
+          }
           newsListNode.append(item);
         }
       }
@@ -418,6 +526,103 @@
       newsUpdatedNode.textContent = data.updated_at
         ? `Updated ${new Date(data.updated_at).toLocaleTimeString()}`
         : "";
+    }
+
+    function renderGoldOutlook(data) {
+      outlookContentNode.replaceChildren();
+      const { momentum, research } = data;
+      const grid = element("div", "outlook-grid");
+      const periods = [
+        ["Short-term momentum", momentum.short_term],
+        ["One-month momentum", momentum.one_month],
+        ["Long-term momentum", momentum.long_term]
+      ];
+
+      for (const [heading, period] of periods) {
+        const card = element("article", "outlook-card");
+        card.append(element("h3", "", heading));
+        if (!period) {
+          card.append(element("p", "outlook-detail", "Not enough historical prices to calculate this period."));
+        } else {
+          const direction = period.direction;
+          const directionText = direction === "up" ? "Upward" : direction === "down" ? "Downward" : "Flat";
+          const row = element("div", "outlook-direction");
+          row.append(element("span", `outlook-label ${direction}`, `${directionText} trend`));
+          row.append(element(
+            "span",
+            "outlook-return",
+            `${period.change_pct > 0 ? "+" : ""}${number(period.change_pct, 2)}%`
+          ));
+          card.append(row);
+          card.append(element(
+            "p",
+            "outlook-detail",
+            `${period.label}: $${number(period.start_close_usd_oz)} to $${number(period.latest_close_usd_oz)} per troy ounce, using ${period.sessions} trading sessions.`
+          ));
+        }
+        grid.append(card);
+      }
+      outlookContentNode.append(grid);
+
+      const researchCard = element("article", "research-card");
+      researchCard.append(element("h3", "", "Long-term fundamental research"));
+      researchCard.append(element("p", "research-summary", research.long_term_assessment));
+      const columns = element("div", "research-columns");
+      for (const [heading, items] of [
+        ["Potential support", research.supporting_factors],
+        ["Risks / headwinds", research.headwinds]
+      ]) {
+        const section = element("section", "");
+        section.append(element("h4", "", heading));
+        const list = element("ul", "");
+        for (const item of items) list.append(element("li", "", item));
+        section.append(list);
+        columns.append(section);
+      }
+      researchCard.append(columns);
+
+      const watch = element("div", "watch-factors");
+      for (const factor of research.watch_factors) {
+        watch.append(element("span", "watch-factor", `Watch: ${factor}`));
+      }
+      researchCard.append(watch);
+
+      const source = element("p", "research-source");
+      source.append(document.createTextNode(`Source: ${research.source} · ${research.published} · `));
+      const sourceLink = element("a", "", "Gold Demand Trends: Q3 2026");
+      sourceLink.href = research.url;
+      sourceLink.target = "_blank";
+      sourceLink.rel = "noopener noreferrer";
+      source.append(sourceLink);
+      researchCard.append(source);
+      researchCard.append(element("p", "research-source", data.disclaimer));
+      source.append(document.createTextNode(` Historical price data: ${momentum.source}.`));
+      const historyLink = element("a", "", "View price history");
+      historyLink.href = momentum.source_url;
+      historyLink.target = "_blank";
+      historyLink.rel = "noopener noreferrer";
+      source.append(historyLink);
+      outlookContentNode.append(researchCard);
+
+      outlookUpdatedNode.textContent = `Prices as of ${new Date(momentum.as_of).toLocaleString()}`;
+    }
+
+    async function loadGoldOutlook() {
+      try {
+        const response = await fetch("/api/gold-outlook", {
+          headers: { "Accept": "application/json" }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const detail = typeof data.detail === "string" ? data.detail : "Gold outlook request failed.";
+          throw new Error(detail);
+        }
+        renderGoldOutlook(data);
+      } catch (error) {
+        outlookContentNode.replaceChildren(
+          element("p", "news-message", `Could not load gold research: ${error.message}`)
+        );
+      }
     }
 
     async function loadNews() {
@@ -464,6 +669,7 @@
     refreshButton.addEventListener("click", () => loadPrices(true));
     loadPrices();
     loadNews();
+    loadGoldOutlook();
   </script>
 </body>
 </html>
