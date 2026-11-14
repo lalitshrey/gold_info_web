@@ -6,3 +6,15 @@ __pycache__/
 .env.*
 *.pem
 *.key
+
+# Test and lint artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local logs and operating-system metadata
+*.log
+.DS_Store
