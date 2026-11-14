@@ -1,4 +1,4 @@
-# Gold Info Web
+# Gold Market info
 
 A Python dashboard for precious-metals prices. It displays COMEX gold and
 silver converted to INR, USD/INR, and directly fetched MCX gold, silver, and

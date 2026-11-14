@@ -1,6 +1,6 @@
-# Gold Info Web Architecture
+# Gold Market info Architecture
 
-Gold Info Web is a Python application with a FastAPI browser dashboard and a
+Gold Market info is a Python application with a FastAPI browser dashboard and a
 Rich terminal dashboard. The browser presents COMEX precious-metal quotes, MCX commodity contracts,
 Nippon India Gold BeES and Silver BeES prices from NSE and Zerodha's BSE
 listing, USD/INR, RSS headlines with related-stock sentiment, and a gold-market

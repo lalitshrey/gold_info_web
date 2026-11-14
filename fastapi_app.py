@@ -56,7 +56,7 @@ _sentiment_lock = threading.Lock()
 _sentiment_analyzer: Any = None
 
 app = FastAPI(
-    title="Gold Info Web",
+    title="Gold Market info",
     description="COMEX, MCX and Gold BeES prices, and USD/INR.",
     version="1.0.0",
 )
