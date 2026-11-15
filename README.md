@@ -43,6 +43,8 @@ Use **Refresh prices** to fetch updated quotes. The JSON endpoints are
 `GET /api/gold-outlook`, and `GET /api/gold-news`. The gold outlook also shows
 recent gold-market headlines with sentiment labels; these reflect headline
 text tone and are not price forecasts or investment advice.
+The stock and market news panel also includes a separate stream of recent
+conflict and geopolitical headlines related to gold, stocks, oil, or markets.
 
 Alternatively, run the app with Uvicorn:
 

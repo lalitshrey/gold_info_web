@@ -94,7 +94,7 @@ Open `http://127.0.0.1:8000/`.
 | `GET /static/tailwind.css` | Serves the locally compiled Tailwind stylesheet. |
 | `GET /api/prices` | Returns cached quotes or fetches a new set when the 60-second cache expires. |
 | `POST /api/refresh` | Forces a new parallel quote fetch and refreshes the in-process cache. |
-| `GET /api/news` | Fetches, deduplicates, and filters recent RSS news; adds VADER sentiment and related NSE stocks. |
+| `GET /api/news` | Fetches recent market RSS news and a separate conflict/geopolitical market-impact feed; adds VADER sentiment and related NSE stocks. |
 | `GET /api/gold-outlook` | Returns COMEX gold futures momentum and cited long-term demand research. |
 | `GET /api/gold-news` | Returns recent Google News RSS results matching gold-market terms with VADER headline sentiment. |
 
@@ -217,6 +217,9 @@ dashboard reports that the outlook could not be loaded.
 The outlook grid's fourth card shows up to eight gold-related headlines from a
 Google News RSS search, each linked to its publisher and labeled with VADER
 headline tone. Sentiment is informational and is not a gold-price forecast.
+The stock/market news route separately returns up to eight recent conflict and
+geopolitical headlines matching gold, stocks, oil, or market terms. The browser
+merges these into the news feed with a distinct category badge and sentiment.
 
 ## Providers and calculations
 

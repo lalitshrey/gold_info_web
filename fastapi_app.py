@@ -56,6 +56,16 @@ _GOLD_NEWS_FEED = "https://news.google.com/rss/search?" + urlencode({
     "gl": "US",
     "ceid": "US:en",
 })
+_WAR_MARKET_NEWS_FEED = "https://news.google.com/rss/search?" + urlencode({
+    "q": (
+        '(war OR conflict OR invasion OR airstrike OR missile OR ceasefire '
+        'OR sanctions OR "military strike" OR "geopolitical tension") '
+        '(gold OR stocks OR oil OR markets OR economy)'
+    ),
+    "hl": "en-US",
+    "gl": "US",
+    "ceid": "US:en",
+})
 _CACHE_SECONDS = 60
 _logger = logging.getLogger(__name__)
 _cache: dict[str, Any] | None = None
@@ -427,16 +437,30 @@ async def refresh_prices() -> dict[str, Any]:
 @app.get("/api/news")
 async def stock_news() -> dict[str, Any]:
     try:
-        items = await fetch_rss()
+        market_items, war_market_items = await asyncio.gather(
+            fetch_rss(),
+            fetch_rss([_WAR_MARKET_NEWS_FEED]),
+        )
         articles = merge_filter_sort(
-            items,
+            market_items,
             lookback_minutes=7 * 24 * 60,
             limit=12,
+        )
+        war_articles = merge_filter_sort(
+            war_market_items,
+            lookback_minutes=7 * 24 * 60,
+            limit=8,
         )
         analyzed_articles, stock_sentiments = await asyncio.to_thread(
             _analyze_news,
             articles,
         )
+        analyzed_war_articles = await asyncio.to_thread(
+            _analyze_gold_news,
+            war_articles,
+        )
+        for article in analyzed_war_articles:
+            article["category"] = "War & geopolitical risk"
     except Exception as error:
         _logger.exception("Could not fetch stock and market news")
         raise HTTPException(
@@ -447,6 +471,7 @@ async def stock_news() -> dict[str, Any]:
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "articles": analyzed_articles,
+        "war_articles": analyzed_war_articles,
         "stock_sentiments": stock_sentiments,
     }
 
