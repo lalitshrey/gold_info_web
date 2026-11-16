@@ -4,24 +4,40 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import json
 import logging
 import re
 import threading
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 from urllib.parse import urlencode
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from pwdlib import PasswordHash
+from sqlalchemy.exc import IntegrityError
+from starlette.middleware.sessions import SessionMiddleware
 
 from stock_news_agent.aggregator import merge_filter_sort
 from stock_news_agent.providers.rss_provider import fetch_rss
+from database import (
+    User,
+    close_database,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+    initialize_database,
+    store_news_articles,
+)
 from gold_research import fetch_gold_momentum
 from get_goldbees_quote import (
     fetch_goldbees_quote,
@@ -47,7 +63,9 @@ from silver_price_converter import (
 
 
 _BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(_BASE_DIR / ".env")
 _DASHBOARD_FILE = _BASE_DIR / "templates" / "metals_dashboard.html"
+_AUTH_FILE = _BASE_DIR / "templates" / "auth.html"
 _STATIC_DIR = _BASE_DIR / "static"
 _NSE_SYMBOLS_FILE = _BASE_DIR / "stock_news_agent" / "static" / "nse_symbols.json"
 _GOLD_NEWS_FEED = "https://news.google.com/rss/search?" + urlencode({
@@ -73,13 +91,91 @@ _cache_updated_at: datetime | None = None
 _refresh_lock = asyncio.Lock()
 _sentiment_lock = threading.Lock()
 _sentiment_analyzer: Any = None
+_password_hash = PasswordHash.recommended()
+_dummy_password_hash = _password_hash.hash("auricai-invalid-login-password")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required. Configure it in .env before starting AuricAI.")
+    if not database_url.startswith(("mysql+pymysql://", "sqlite:///")):
+        raise RuntimeError("DATABASE_URL must use mysql+pymysql:// (or sqlite:/// for tests).")
+
+    session_secret = os.getenv("SESSION_SECRET", "")
+    if len(session_secret) < 32:
+        raise RuntimeError("SESSION_SECRET must contain at least 32 characters.")
+
+    await asyncio.to_thread(initialize_database, database_url)
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(close_database)
+
 
 app = FastAPI(
     title="AuricAI",
     description="COMEX, MCX and Gold BeES prices, and USD/INR.",
     version="1.0.0",
+    lifespan=lifespan,
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET") or "invalid-session-secret-configure-env",
+    session_cookie="auricai_session",
+    same_site="lax",
+    https_only=os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true",
 )
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
+class AccountCredentials(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=10, max_length=128)
+
+
+class RegistrationCredentials(AccountCredentials):
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    mobile_number: str = Field(min_length=7, max_length=32)
+    password_confirmation: str = Field(max_length=128)
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("This field is required.")
+        return normalized
+
+    @field_validator("mobile_number")
+    @classmethod
+    def validate_mobile_number(cls, value: str) -> str:
+        normalized = value.strip()
+        digits = re.sub(r"\D", "", normalized)
+        if (
+            not re.fullmatch(r"\+?[0-9\s().-]+", normalized)
+            or not 7 <= len(digits) <= 15
+        ):
+            raise ValueError("Enter a valid mobile number with 7 to 15 digits.")
+        return normalized
+
+
+async def require_user(request: Request) -> User:
+    user_id = request.session.get("user_id")
+    if not isinstance(user_id, int):
+        raise HTTPException(status_code=401, detail="Sign in to continue.")
+
+    user = await asyncio.to_thread(get_user_by_id, user_id)
+    if user is None:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Sign in to continue.")
+    return user
+
+
+def _normalized_email(email: EmailStr) -> str:
+    return str(email).strip().lower()
 
 
 def _sentiment_label(compound: float) -> str:
@@ -184,6 +280,7 @@ def _analyze_news(
                     else None
                 ),
                 "source": article.source.model_dump(mode="json"),
+                "summary": article.summary,
                 "related_stocks": related_stocks,
                 "sentiment": sentiment,
             }
@@ -223,6 +320,7 @@ def _analyze_gold_news(articles: list[Any]) -> list[dict[str, Any]]:
                 else None
             ),
             "source": article.source.model_dump(mode="json"),
+            "summary": article.summary,
             "sentiment": {
                 "compound": compound,
                 "label": _sentiment_label(compound),
@@ -419,23 +517,95 @@ async def _refresh_prices(force: bool = False) -> dict[str, Any]:
         return payload
 
 
-@app.get("/", response_class=FileResponse, include_in_schema=False)
-async def dashboard() -> FileResponse:
+@app.get("/login", response_class=FileResponse, response_model=None, include_in_schema=False)
+async def login_page(request: Request) -> FileResponse | RedirectResponse:
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(_AUTH_FILE, media_type="text/html")
+
+
+@app.get("/register", response_class=FileResponse, response_model=None, include_in_schema=False)
+async def registration_page(request: Request) -> FileResponse | RedirectResponse:
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(_AUTH_FILE, media_type="text/html")
+
+
+@app.post("/auth/register")
+async def register_account(
+    credentials: RegistrationCredentials,
+    request: Request,
+) -> dict[str, str]:
+    if credentials.password != credentials.password_confirmation:
+        raise HTTPException(status_code=422, detail="Passwords do not match.")
+
+    email = _normalized_email(credentials.email)
+    password_hash = await asyncio.to_thread(_password_hash.hash, credentials.password)
+    try:
+        user = await asyncio.to_thread(
+            create_user,
+            email,
+            password_hash,
+            credentials.first_name,
+            credentials.last_name,
+            credentials.mobile_number,
+        )
+    except IntegrityError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="An account with this email already exists.",
+        ) from error
+
+    request.session.clear()
+    request.session.update({"user_id": user.id, "email": user.email})
+    return {"email": user.email}
+
+
+@app.post("/auth/login")
+async def authenticate_account(
+    credentials: AccountCredentials,
+    request: Request,
+) -> dict[str, str]:
+    email = _normalized_email(credentials.email)
+    user = await asyncio.to_thread(get_user_by_email, email)
+    password_matches = await asyncio.to_thread(
+        _password_hash.verify,
+        credentials.password,
+        user.password_hash if user else _dummy_password_hash,
+    )
+    if user is None or not password_matches:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    request.session.clear()
+    request.session.update({"user_id": user.id, "email": user.email})
+    return {"email": user.email}
+
+
+@app.post("/auth/logout")
+async def logout(request: Request) -> dict[str, bool]:
+    request.session.clear()
+    return {"logged_out": True}
+
+
+@app.get("/", response_class=FileResponse, response_model=None, include_in_schema=False)
+async def dashboard(request: Request) -> FileResponse | RedirectResponse:
+    if not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
     return FileResponse(_DASHBOARD_FILE, media_type="text/html")
 
 
 @app.get("/api/prices")
-async def prices() -> dict[str, Any]:
+async def prices(_: User = Depends(require_user)) -> dict[str, Any]:
     return await _refresh_prices()
 
 
 @app.post("/api/refresh")
-async def refresh_prices() -> dict[str, Any]:
+async def refresh_prices(_: User = Depends(require_user)) -> dict[str, Any]:
     return await _refresh_prices(force=True)
 
 
 @app.get("/api/news")
-async def stock_news() -> dict[str, Any]:
+async def stock_news(_: User = Depends(require_user)) -> dict[str, Any]:
     try:
         market_items, war_market_items = await asyncio.gather(
             fetch_rss(),
@@ -461,6 +631,18 @@ async def stock_news() -> dict[str, Any]:
         )
         for article in analyzed_war_articles:
             article["category"] = "War & geopolitical risk"
+        await asyncio.gather(
+            asyncio.to_thread(
+                store_news_articles,
+                analyzed_articles,
+                category="market",
+            ),
+            asyncio.to_thread(
+                store_news_articles,
+                analyzed_war_articles,
+                category="war",
+            ),
+        )
     except Exception as error:
         _logger.exception("Could not fetch stock and market news")
         raise HTTPException(
@@ -477,7 +659,7 @@ async def stock_news() -> dict[str, Any]:
 
 
 @app.get("/api/gold-news")
-async def gold_news() -> dict[str, Any]:
+async def gold_news(_: User = Depends(require_user)) -> dict[str, Any]:
     try:
         items = await fetch_rss([_GOLD_NEWS_FEED])
         articles = merge_filter_sort(
@@ -497,6 +679,11 @@ async def gold_news() -> dict[str, Any]:
             _analyze_gold_news,
             gold_articles,
         )
+        await asyncio.to_thread(
+            store_news_articles,
+            analyzed_articles,
+            category="gold",
+        )
     except Exception as error:
         _logger.exception("Could not fetch gold-impacting news")
         raise HTTPException(
@@ -511,7 +698,7 @@ async def gold_news() -> dict[str, Any]:
 
 
 @app.get("/api/gold-outlook")
-async def gold_outlook() -> dict[str, Any]:
+async def gold_outlook(_: User = Depends(require_user)) -> dict[str, Any]:
     try:
         momentum = await asyncio.to_thread(fetch_gold_momentum)
     except RuntimeError as error:

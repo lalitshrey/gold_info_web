@@ -13,6 +13,8 @@ flowchart TD
     Browser["Browser"]
     UI["templates/metals_dashboard.html"]
     API["fastapi_app.py<br/>FastAPI routes"]
+    Auth["Email registration and<br/>signed-cookie session"]
+    Database["database.py<br/>MySQL storage"]
     Prices["_collect_prices()<br/>parallel quote fetch and conversion"]
     News["RSS provider and article aggregator"]
     Sentiment["VADER sentiment and NSE symbol matching"]
@@ -33,6 +35,8 @@ flowchart TD
     Symbols["stock_news_agent/static/nse_symbols.json"]
 
     Browser --> UI
+    Browser -->|"register, login, logout"| Auth
+    Auth --> Database
     UI -->|"GET /api/prices; POST /api/refresh"| API
     UI -->|"GET /api/news"| API
     UI -->|"GET /api/gold-outlook"| API
@@ -43,6 +47,7 @@ flowchart TD
     News --> Sentiment
     Sentiment --> Symbols
     API --> Outlook
+    API --> Database
     Outlook --> Yahoo
     ETFQuotes --> YahooETF
     ETFQuotes --> ZerodhaBSE
@@ -69,12 +74,14 @@ does not hide the others.
 
 ### Entry point and run
 
-`fastapi_app.py` creates the FastAPI application object `app`. Run from the
-repository root after building the Tailwind stylesheet:
+`fastapi_app.py` creates the FastAPI application object `app`. Configure
+MySQL and the session secret in `.env`, then run from the repository root
+after building the Tailwind stylesheet:
 
 ```bash
 npm install
 npm run build:css
+cp .env.example .env
 python fastapi_app.py
 ```
 
@@ -91,6 +98,8 @@ Open `http://127.0.0.1:8000/`.
 | Route | Purpose |
 | --- | --- |
 | `GET /` | Serves `templates/metals_dashboard.html`. |
+| `GET /login`, `GET /register` | Serves the email sign-in and registration page. |
+| `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Creates accounts, starts a signed-cookie session, or clears it. |
 | `GET /static/tailwind.css` | Serves the locally compiled Tailwind stylesheet. |
 | `GET /api/prices` | Returns cached quotes or fetches a new set when the 60-second cache expires. |
 | `POST /api/refresh` | Forces a new parallel quote fetch and refreshes the in-process cache. |
@@ -101,6 +110,14 @@ Open `http://127.0.0.1:8000/`.
 The UI uses Tailwind utility classes for layout, spacing, and responsive
 behavior. `static/tailwind.input.css` and `tailwind.config.js` are the build
 inputs; `npm run build:css` writes the stylesheet served at `/static/tailwind.css`.
+
+The dashboard and all `/api/*` data routes require a valid session. Open
+registration collects first name, last name, mobile number, email, and a
+password entered twice; it stores Argon2 password hashes and profile fields in
+MySQL. Startup adds missing profile columns to an existing `users` table.
+News articles are upserted by category and URL; the URL itself lives in
+`news_links` and is referenced from `news_articles.link_id`. Configure
+`SESSION_COOKIE_SECURE=true` when using HTTPS; keep the session secret private.
 
 ### Quote flow
 
@@ -232,12 +249,13 @@ merges these into the news feed with a distinct category badge and sentiment.
 | `gold_price_converter.py` | Converts USD/troy-ounce gold to INR/10g and calculates configured duty/GST estimates. |
 | `silver_price_converter.py` | Converts USD/troy-ounce silver to INR/kg and calculates configured duty/GST estimates. |
 | `gold_research.py` | Fetches daily GC=F history and calculates historical momentum. |
+| `database.py` | Creates MySQL tables for users, news URLs, and news articles; stores Argon2 account hashes and article metadata. |
 | `stock_news_agent/providers/rss_provider.py` | Reads the configured market-news RSS feeds. |
 | `stock_news_agent/aggregator.py` | Deduplicates, filters, sorts, and limits news items. |
 | `stock_news_agent/static/nse_symbols.json` | NSE symbol/name list used for article-company matching. |
 
 MCX gold, silver, and crude oil are futures contracts, separate from COMEX
-international quotes. No application database is required for the dashboard.
+international quotes.
 The Gold BeES and Silver BeES cards show each ETF on NSE and BSE using
 independent Yahoo Finance and Zerodha public quote sources.
 

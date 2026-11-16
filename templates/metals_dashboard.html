@@ -211,12 +211,15 @@
         <h1 class="m-0 text-[clamp(1.8rem,3.8vw,2.55rem)] leading-[1.1] tracking-[-.05em]">AuricAI</h1>
         <p class="subtitle mt-[9px] text-[.98rem]">Precious-metals prices, exchange rates, and stock market news.</p>
       </div>
-      <button id="refresh" class="refresh-button inline-flex min-h-11 flex-[0_0_auto] items-center justify-center gap-[9px] rounded-[11px] bg-blue-700 px-4 text-[.9rem] font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 max-[600px]:h-11 max-[600px]:w-11 max-[600px]:min-w-11 max-[600px]:overflow-hidden max-[600px]:p-0 max-[600px]:text-[0]" type="button" aria-label="Refresh prices">
-        <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"></path>
-        </svg>
-        Refresh prices
-      </button>
+      <div class="flex items-center gap-2">
+        <button id="logout" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800" type="button">Sign out</button>
+        <button id="refresh" class="refresh-button inline-flex min-h-11 flex-[0_0_auto] items-center justify-center gap-[9px] rounded-[11px] bg-blue-700 px-4 text-[.9rem] font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 max-[600px]:h-11 max-[600px]:w-11 max-[600px]:min-w-11 max-[600px]:overflow-hidden max-[600px]:p-0 max-[600px]:text-[0]" type="button" aria-label="Refresh prices">
+          <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"></path>
+          </svg>
+          Refresh prices
+        </button>
+      </div>
     </header>
 
     <div class="status-row mb-3 flex min-h-[34px] items-center justify-between gap-3 max-[600px]:items-start">
@@ -262,6 +265,7 @@
     const statusNode = document.getElementById("status");
     const warningsNode = document.getElementById("warnings");
     const refreshButton = document.getElementById("refresh");
+    const logoutButton = document.getElementById("logout");
     const newsListNode = document.getElementById("news-list");
     const newsUpdatedNode = document.getElementById("news-updated");
     const stockSentimentsNode = document.getElementById("stock-sentiments");
@@ -282,6 +286,15 @@
       if (className) result.className = className;
       if (text !== undefined && text !== null) result.textContent = text;
       return result;
+    }
+
+    async function apiFetch(url, options = {}) {
+      const response = await fetch(url, options);
+      if (response.status === 401) {
+        window.location.assign("/login");
+        throw new Error("Your session expired. Please sign in again.");
+      }
+      return response;
     }
 
     function number(value, decimals = 2, locale = "en-IN") {
@@ -864,7 +877,7 @@
 
     async function loadGoldOutlook() {
       try {
-        const response = await fetch("/api/gold-outlook", {
+        const response = await apiFetch("/api/gold-outlook", {
           headers: { "Accept": "application/json" }
         });
         const data = await response.json();
@@ -986,7 +999,7 @@
 
     async function loadGoldNews() {
       try {
-        const response = await fetch("/api/gold-news", {
+        const response = await apiFetch("/api/gold-news", {
           headers: { "Accept": "application/json" }
         });
         const data = await response.json();
@@ -1002,7 +1015,7 @@
 
     async function loadNews() {
       try {
-        const response = await fetch("/api/news", {
+        const response = await apiFetch("/api/news", {
           headers: { "Accept": "application/json" }
         });
         const data = await response.json();
@@ -1023,7 +1036,7 @@
       statusNode.classList.remove("error");
       statusNode.textContent = force ? "Refreshing market data…" : "Loading market data…";
       try {
-        const response = await fetch(force ? "/api/refresh" : "/api/prices", {
+        const response = await apiFetch(force ? "/api/refresh" : "/api/prices", {
           method: force ? "POST" : "GET",
           headers: { "Accept": "application/json" }
         });
@@ -1042,6 +1055,18 @@
     }
 
     refreshButton.addEventListener("click", () => loadPrices(true));
+    logoutButton.addEventListener("click", async () => {
+      logoutButton.disabled = true;
+      try {
+        const response = await fetch("/auth/logout", { method: "POST" });
+        if (!response.ok) throw new Error("Could not sign out.");
+        window.location.assign("/login");
+      } catch (error) {
+        logoutButton.disabled = false;
+        statusNode.classList.add("error");
+        statusNode.textContent = error.message;
+      }
+    });
     loadPrices();
     loadNews();
     loadGoldOutlook();

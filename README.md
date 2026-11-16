@@ -24,6 +24,36 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
+## MySQL and accounts
+
+AuricAI requires MySQL for account registration and saved news. Create a
+database and a dedicated MySQL user with permission to create and update
+tables, then configure the connection in a local `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Set `DATABASE_URL` to
+`mysql+pymysql://USER:PASSWORD@HOST:3306/DATABASE`. URL-encode special
+characters in the username or password. Set `SESSION_SECRET` to a unique
+random value of at least 32 characters, for example:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+For local HTTP development, keep `SESSION_COOKIE_SECURE=false`. Set it to
+`true` when serving the application over HTTPS. The `.env` file is ignored by
+Git and must not be committed. On startup, AuricAI creates the `users`,
+`news_links`, and `news_articles` tables if they do not exist. News URLs are
+stored in `news_links`; each saved article references its URL row by a
+foreign key. Use `/register` to create an account and `/login` to sign in;
+the dashboard and its data APIs require authentication.
+Registration collects first name, last name, mobile number, email, password,
+and password confirmation. Existing user tables receive the profile columns
+automatically at startup.
+
 ## Run
 
 ### Browser dashboard (FastAPI)
@@ -98,7 +128,9 @@ applies 6% import duty and 3% GST.
 
 - `precious_metals_dashboard.py` — dashboard orchestration and display.
 - `fastapi_app.py` — FastAPI application and JSON price endpoints.
+- `database.py` — MySQL account and normalized news/article persistence.
 - `templates/metals_dashboard.html` — browser dashboard UI.
+- `templates/auth.html` — email sign-in and registration UI.
 - `get_gold_silver_comexlive.py` — COMEX quote fetch and parsing.
 - `get_goldbees_quote.py` — Yahoo Finance and Zerodha public BSE quote fetchers
   for Gold BeES and Silver BeES.
