@@ -98,8 +98,10 @@ Open `http://127.0.0.1:8000/`.
 | Route | Purpose |
 | --- | --- |
 | `GET /` | Serves `templates/metals_dashboard.html`. |
-| `GET /login`, `GET /register` | Serves the email sign-in and registration page. |
+| `GET /login`, `GET /register`, `GET /forgot-password`, `GET /reset-password` | Serves sign-in, registration, and password reset pages. |
+| `GET /auth/google`, `GET /auth/google/callback` | Starts Google OpenID Connect sign-in and validates the verified identity before creating a session. |
 | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Creates accounts, starts a signed-cookie session, or clears it. |
+| `POST /auth/forgot-password`, `POST /auth/reset-password` | Emails time-limited password-reset links and accepts each link once. |
 | `GET /static/tailwind.css` | Serves the locally compiled Tailwind stylesheet. |
 | `GET /api/prices` | Returns cached quotes or fetches a new set when the 60-second cache expires. |
 | `POST /api/refresh` | Forces a new parallel quote fetch and refreshes the in-process cache. |
@@ -115,6 +117,14 @@ The dashboard and all `/api/*` data routes require a valid session. Open
 registration collects first name, last name, mobile number, email, and a
 password entered twice; it stores Argon2 password hashes and profile fields in
 MySQL. Startup adds missing profile columns to an existing `users` table.
+Password reset tokens are stored as SHA-256 hashes, expire after 30 minutes,
+are single-use, and are sent in URL fragments through the configured SMTP
+server. `PUBLIC_BASE_URL` must be set to the externally reachable application
+URL; SMTP settings are supplied via the environment.
+Google sign-in uses Authlib OpenID Connect, validates the Google identity,
+and only accepts verified Google email claims. Configure `GOOGLE_CLIENT_ID`
+and `GOOGLE_CLIENT_SECRET` plus the matching callback URI in Google Cloud
+Console.
 News articles are upserted by category and URL; the URL itself lives in
 `news_links` and is referenced from `news_articles.link_id`. Configure
 `SESSION_COOKIE_SECURE=true` when using HTTPS; keep the session secret private.

@@ -54,6 +54,23 @@ Registration collects first name, last name, mobile number, email, password,
 and password confirmation. Existing user tables receive the profile columns
 automatically at startup.
 
+Password reset emails use SMTP. Configure `PUBLIC_BASE_URL`,
+`SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM_EMAIL` in `.env`; add
+`SMTP_USERNAME` and `SMTP_PASSWORD` when the mail server requires login. Use
+`SMTP_STARTTLS=true` for STARTTLS (the default) or set it to `false` and
+`SMTP_USE_SSL=true` for implicit TLS. Reset links expire after 30 minutes and
+can only be used once. Configure a real HTTPS `PUBLIC_BASE_URL` in production.
+The token is placed in the link fragment so it is not sent in the initial page
+request or routine HTTP referrer headers.
+
+To enable Google sign-in, create an OAuth 2.0 Web application client in Google
+Cloud Console. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`, and
+add `https://YOUR_HOST/auth/google/callback` (or
+`http://127.0.0.1:8000/auth/google/callback` for local development) as an
+authorized redirect URI. `PUBLIC_BASE_URL` must match the same origin. The
+Google button is shown only on the sign-in page; Google accounts must have a
+verified email address.
+
 ## Run
 
 ### Browser dashboard (FastAPI)

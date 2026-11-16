@@ -58,6 +58,21 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class NewsLink(Base):
     __tablename__ = "news_links"
 
@@ -172,6 +187,102 @@ def create_user(
             raise
         session.refresh(user)
         return user
+
+
+def create_google_user(
+    email: str,
+    password_hash: str,
+    first_name: str,
+    last_name: str,
+) -> User:
+    with _session() as session:
+        user = User(
+            email=email,
+            password_hash=password_hash,
+            first_name=first_name or "",
+            last_name=last_name or "",
+            mobile_number="",
+        )
+        session.add(user)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            existing_user = session.scalar(select(User).where(User.email == email))
+            if existing_user is None:
+                raise
+            return existing_user
+        session.refresh(user)
+        return user
+
+
+def create_password_reset_token(
+    user_id: int,
+    token_hash: str,
+    expires_at: datetime,
+) -> bool:
+    now = _utcnow()
+    with _session() as session:
+        latest_token = session.scalar(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user_id)
+            .order_by(PasswordResetToken.created_at.desc())
+            .limit(1)
+        )
+        if latest_token is not None and (now - latest_token.created_at).total_seconds() < 60:
+            return False
+
+        for token in session.scalars(
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == user_id,
+                PasswordResetToken.used_at.is_(None),
+            )
+        ):
+            token.used_at = now
+
+        session.add(
+            PasswordResetToken(
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+        )
+        session.commit()
+        return True
+
+
+def reset_user_password(token_hash: str, password_hash: str) -> bool:
+    now = _utcnow()
+    with _session() as session:
+        token = session.scalar(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.token_hash == token_hash)
+            .with_for_update()
+        )
+        if token is None or token.used_at is not None or token.expires_at <= now:
+            return False
+
+        user = session.get(User, token.user_id)
+        if user is None:
+            return False
+
+        user.password_hash = password_hash
+        token.used_at = now
+        session.commit()
+        return True
+
+
+def revoke_password_reset_token(token_hash: str) -> None:
+    with _session() as session:
+        token = session.scalar(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == token_hash,
+                PasswordResetToken.used_at.is_(None),
+            )
+        )
+        if token is not None:
+            token.used_at = _utcnow()
+            session.commit()
 
 
 def store_news_articles(

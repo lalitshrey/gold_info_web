@@ -4,22 +4,29 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import json
 import logging
 import re
+import secrets
+import smtplib
 import threading
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, AsyncIterator
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import uvicorn
+import httpx
+from authlib.integrations.base_client.errors import OAuthError
+from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -32,10 +39,14 @@ from stock_news_agent.providers.rss_provider import fetch_rss
 from database import (
     User,
     close_database,
+    create_google_user,
     create_user,
+    create_password_reset_token,
     get_user_by_email,
     get_user_by_id,
     initialize_database,
+    revoke_password_reset_token,
+    reset_user_password,
     store_news_articles,
 )
 from gold_research import fetch_gold_momentum
@@ -93,6 +104,20 @@ _sentiment_lock = threading.Lock()
 _sentiment_analyzer: Any = None
 _password_hash = PasswordHash.recommended()
 _dummy_password_hash = _password_hash.hash("auricai-invalid-login-password")
+_google_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+_google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+if bool(_google_client_id) != bool(_google_client_secret):
+    raise RuntimeError("Configure both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
+
+oauth = OAuth()
+if _google_client_id and _google_client_secret:
+    oauth.register(
+        name="google",
+        client_id=_google_client_id,
+        client_secret=_google_client_secret,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 
 
 @asynccontextmanager
@@ -162,6 +187,32 @@ class RegistrationCredentials(AccountCredentials):
         return normalized
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetCredentials(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+    password: str = Field(min_length=10, max_length=128)
+    password_confirmation: str = Field(max_length=128)
+
+
+class GoogleIdentity(BaseModel):
+    sub: str = Field(min_length=1)
+    email: EmailStr
+    email_verified: bool
+    given_name: str | None = None
+    family_name: str | None = None
+
+
+def _deliver_password_reset_email(email: str, reset_url: str, token_hash: str) -> None:
+    try:
+        _send_password_reset_email(email, reset_url)
+    except (OSError, smtplib.SMTPException):
+        _logger.exception("Could not send password reset email.")
+        revoke_password_reset_token(token_hash)
+
+
 async def require_user(request: Request) -> User:
     user_id = request.session.get("user_id")
     if not isinstance(user_id, int):
@@ -176,6 +227,91 @@ async def require_user(request: Request) -> User:
 
 def _normalized_email(email: EmailStr) -> str:
     return str(email).strip().lower()
+
+
+def _google_redirect_uri() -> str:
+    base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    parsed_base_url = urlsplit(base_url)
+    if parsed_base_url.scheme not in {"http", "https"} or not parsed_base_url.netloc:
+        raise HTTPException(
+            status_code=503,
+            detail="Google sign-in is not configured. Contact the site administrator.",
+        )
+    return f"{base_url}/auth/google/callback"
+
+
+def _password_reset_email_settings() -> tuple[str, int, str, str, str, bool, bool]:
+    host = os.getenv("SMTP_HOST", "").strip()
+    sender = os.getenv("SMTP_FROM_EMAIL", "").strip()
+    base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    parsed_base_url = urlsplit(base_url)
+    if not host or not sender or not base_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is not configured. Contact the site administrator.",
+        )
+    if parsed_base_url.scheme not in {"http", "https"} or not parsed_base_url.netloc:
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is not configured. Contact the site administrator.",
+        )
+
+    username = os.getenv("SMTP_USERNAME", "").strip()
+    password = os.getenv("SMTP_PASSWORD", "")
+    if bool(username) != bool(password):
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is not configured. Contact the site administrator.",
+        )
+
+    try:
+        port = int(os.getenv("SMTP_PORT", "587"))
+    except ValueError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is not configured. Contact the site administrator.",
+        ) from error
+
+    starttls = os.getenv("SMTP_STARTTLS", "true").lower() == "true"
+    use_ssl = os.getenv("SMTP_USE_SSL", "false").lower() == "true"
+    if (starttls and use_ssl) or (username and not (starttls or use_ssl)):
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is not configured. Contact the site administrator.",
+        )
+
+    return (
+        host,
+        port,
+        username,
+        password,
+        sender,
+        starttls,
+        use_ssl,
+    )
+
+
+def _send_password_reset_email(email: str, reset_url: str) -> None:
+    host, port, username, password, sender, starttls, use_ssl = (
+        _password_reset_email_settings()
+    )
+    message = EmailMessage()
+    message["Subject"] = "Reset your AuricAI password"
+    message["From"] = sender
+    message["To"] = email
+    message.set_content(
+        "We received a request to reset your AuricAI password.\n\n"
+        f"Use this link within 30 minutes to choose a new password:\n{reset_url}\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+
+    smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+    with smtp_class(host, port, timeout=15) as smtp:
+        if starttls and not use_ssl:
+            smtp.starttls()
+        if username:
+            smtp.login(username, password)
+        smtp.send_message(message)
 
 
 def _sentiment_label(compound: float) -> str:
@@ -524,8 +660,85 @@ async def login_page(request: Request) -> FileResponse | RedirectResponse:
     return FileResponse(_AUTH_FILE, media_type="text/html")
 
 
+@app.get("/auth/google")
+async def google_login(request: Request) -> RedirectResponse:
+    if not _google_client_id or not _google_client_secret:
+        return RedirectResponse("/login?google_error=not_configured", status_code=303)
+
+    try:
+        return await oauth.google.authorize_redirect(request, _google_redirect_uri())
+    except (OAuthError, httpx.HTTPError):
+        _logger.exception("Could not start Google sign-in.")
+        return RedirectResponse("/login?google_error=unavailable", status_code=303)
+
+
+@app.get("/auth/google/callback")
+async def google_callback(request: Request) -> RedirectResponse:
+    if not _google_client_id or not _google_client_secret:
+        return RedirectResponse("/login?google_error=not_configured", status_code=303)
+
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except (OAuthError, httpx.HTTPError):
+        _logger.exception("Google sign-in callback failed.")
+        return RedirectResponse("/login?google_error=failed", status_code=303)
+
+    userinfo = token.get("userinfo")
+    if not isinstance(userinfo, dict):
+        return RedirectResponse("/login?google_error=invalid_profile", status_code=303)
+    try:
+        identity = GoogleIdentity.model_validate(userinfo)
+    except ValueError:
+        return RedirectResponse("/login?google_error=invalid_profile", status_code=303)
+    if not identity.email_verified:
+        return RedirectResponse("/login?google_error=unverified_email", status_code=303)
+
+    email = _normalized_email(identity.email)
+    user = await asyncio.to_thread(get_user_by_email, email)
+    if user is None:
+        password_hash = await asyncio.to_thread(
+            _password_hash.hash,
+            secrets.token_urlsafe(48),
+        )
+        user = await asyncio.to_thread(
+            create_google_user,
+            email,
+            password_hash,
+            (identity.given_name or "")[:100],
+            (identity.family_name or "")[:100],
+        )
+
+    request.session.clear()
+    request.session.update({"user_id": user.id, "email": user.email})
+    return RedirectResponse("/", status_code=303)
+
+
 @app.get("/register", response_class=FileResponse, response_model=None, include_in_schema=False)
 async def registration_page(request: Request) -> FileResponse | RedirectResponse:
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(_AUTH_FILE, media_type="text/html")
+
+
+@app.get(
+    "/forgot-password",
+    response_class=FileResponse,
+    response_model=None,
+    include_in_schema=False,
+)
+async def forgot_password_page(request: Request) -> FileResponse | RedirectResponse:
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(_AUTH_FILE, media_type="text/html")
+
+
+@app.get(
+    "/reset-password",
+    response_class=FileResponse,
+    response_model=None,
+    include_in_schema=False,
+)
+async def reset_password_page(request: Request) -> FileResponse | RedirectResponse:
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=303)
     return FileResponse(_AUTH_FILE, media_type="text/html")
@@ -559,6 +772,57 @@ async def register_account(
     request.session.clear()
     request.session.update({"user_id": user.id, "email": user.email})
     return {"email": user.email}
+
+
+@app.post("/auth/forgot-password", status_code=202)
+async def request_password_reset(
+    credentials: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+) -> dict[str, str]:
+    _password_reset_email_settings()
+    email = _normalized_email(credentials.email)
+    user = await asyncio.to_thread(get_user_by_email, email)
+    if user is not None:
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30)
+        should_send = await asyncio.to_thread(
+            create_password_reset_token,
+            user.id,
+            token_hash,
+            expires_at,
+        )
+        if should_send:
+            base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+            reset_url = f"{base_url}/reset-password#{urlencode({'token': token})}"
+            background_tasks.add_task(
+                _deliver_password_reset_email,
+                user.email,
+                reset_url,
+                token_hash,
+            )
+
+    return {
+        "message": "If an account exists for that email, a password reset link will be sent."
+    }
+
+
+@app.post("/auth/reset-password")
+async def complete_password_reset(
+    credentials: PasswordResetCredentials,
+) -> dict[str, str]:
+    if credentials.password != credentials.password_confirmation:
+        raise HTTPException(status_code=422, detail="Passwords do not match.")
+
+    token_hash = hashlib.sha256(credentials.token.encode("utf-8")).hexdigest()
+    password_hash = await asyncio.to_thread(_password_hash.hash, credentials.password)
+    reset = await asyncio.to_thread(reset_user_password, token_hash, password_hash)
+    if not reset:
+        raise HTTPException(
+            status_code=400,
+            detail="This password reset link is invalid or has expired. Request a new link.",
+        )
+    return {"message": "Password reset successfully. You can now sign in."}
 
 
 @app.post("/auth/login")
