@@ -76,6 +76,7 @@ from silver_price_converter import (
 _BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(_BASE_DIR / ".env")
 _DASHBOARD_FILE = _BASE_DIR / "templates" / "metals_dashboard.html"
+_STOCK_SENTIMENT_FILE = _BASE_DIR / "templates" / "stock_sentiment.html"
 _AUTH_FILE = _BASE_DIR / "templates" / "auth.html"
 _STATIC_DIR = _BASE_DIR / "static"
 _NSE_SYMBOLS_FILE = _BASE_DIR / "stock_news_agent" / "static" / "nse_symbols.json"
@@ -381,9 +382,15 @@ def _analyze_news(
     articles: list[Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     analyzer = _get_sentiment_analyzer()
-    ticker_scores: dict[str, list[float]] = {}
+    period_days = {
+        "short_term": 7,
+        "medium_term": 30,
+        "long_term": 90,
+    }
+    ticker_scores: dict[str, dict[str, list[float]]] = {}
     ticker_names: dict[str, str] = {}
     analyzed_articles: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
 
     for article in articles:
         text = f"{article.title}\n{article.summary or ''}".strip()
@@ -401,10 +408,19 @@ def _analyze_news(
             for symbol, name, patterns in _stock_matchers()
             if any(pattern.search(text) for pattern in patterns)
         ]
-        for stock in related_stocks:
-            symbol = stock["symbol"]
-            ticker_scores.setdefault(symbol, []).append(compound)
-            ticker_names[symbol] = stock["name"]
+        published_at = article.published_at
+        if published_at is not None:
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=timezone.utc)
+            age_days = (now - published_at.astimezone(timezone.utc)).total_seconds() / 86400
+            if age_days >= 0:
+                for stock in related_stocks:
+                    symbol = stock["symbol"]
+                    ticker_names[symbol] = stock["name"]
+                    scores_by_period = ticker_scores.setdefault(symbol, {})
+                    for period, days in period_days.items():
+                        if age_days <= days:
+                            scores_by_period.setdefault(period, []).append(compound)
 
         analyzed_articles.append(
             {
@@ -423,14 +439,29 @@ def _analyze_news(
         )
 
     stock_sentiments = []
-    for symbol, scores in ticker_scores.items():
-        average = sum(scores) / len(scores)
+    for symbol, scores_by_period in ticker_scores.items():
+        horizons = {}
+        for period in period_days:
+            scores = scores_by_period.get(period, [])
+            average = sum(scores) / len(scores) if scores else None
+            horizons[period] = (
+                {
+                    "article_count": len(scores),
+                    "compound": average,
+                    "label": _sentiment_label(average),
+                }
+                if average is not None
+                else None
+            )
+        long_term_scores = scores_by_period["long_term"]
+        long_term_average = sum(long_term_scores) / len(long_term_scores)
         stock_sentiments.append({
             "symbol": symbol,
             "name": ticker_names[symbol],
-            "article_count": len(scores),
-            "compound": average,
-            "label": _sentiment_label(average),
+            **horizons,
+            "article_count": len(long_term_scores),
+            "compound": long_term_average,
+            "label": _sentiment_label(long_term_average),
         })
     stock_sentiments.sort(
         key=lambda stock: (-stock["article_count"], stock["symbol"])
@@ -858,6 +889,18 @@ async def dashboard(request: Request) -> FileResponse | RedirectResponse:
     return FileResponse(_DASHBOARD_FILE, media_type="text/html")
 
 
+@app.get(
+    "/stock-sentiment",
+    response_class=FileResponse,
+    response_model=None,
+    include_in_schema=False,
+)
+async def stock_sentiment_page(request: Request) -> FileResponse | RedirectResponse:
+    if not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    return FileResponse(_STOCK_SENTIMENT_FILE, media_type="text/html")
+
+
 @app.get("/api/prices")
 async def prices(_: User = Depends(require_user)) -> dict[str, Any]:
     return await _refresh_prices()
@@ -875,11 +918,17 @@ async def stock_news(_: User = Depends(require_user)) -> dict[str, Any]:
             fetch_rss(),
             fetch_rss([_WAR_MARKET_NEWS_FEED]),
         )
+        sentiment_items = merge_filter_sort(
+            market_items,
+            lookback_minutes=90 * 24 * 60,
+            limit=500,
+        )
         articles = merge_filter_sort(
             market_items,
             lookback_minutes=7 * 24 * 60,
             limit=12,
         )
+        display_article_urls = {str(article.url) for article in articles}
         war_articles = merge_filter_sort(
             war_market_items,
             lookback_minutes=7 * 24 * 60,
@@ -887,8 +936,13 @@ async def stock_news(_: User = Depends(require_user)) -> dict[str, Any]:
         )
         analyzed_articles, stock_sentiments = await asyncio.to_thread(
             _analyze_news,
-            articles,
+            sentiment_items,
         )
+        analyzed_articles = [
+            article
+            for article in analyzed_articles
+            if article["url"] in display_article_urls
+        ]
         analyzed_war_articles = await asyncio.to_thread(
             _analyze_gold_news,
             war_articles,
@@ -981,6 +1035,26 @@ async def gold_outlook(_: User = Depends(require_user)) -> dict[str, Any]:
             "url": (
                 "https://www.gold.org/goldhub/research/"
                 "gold-demand-trends/gold-demand-trends-q3-2026"
+            ),
+            "summary": (
+                "The World Gold Council's Q3 2026 report, published 3 November "
+                "and covering data through 30 September, describes a market "
+                "with strong institutional demand but weaker price-sensitive "
+                "consumer demand. Year-to-date total demand reached 3,881 "
+                "tonnes, close to the 2025 record of 3,884 tonnes. Central "
+                "banks bought 321 tonnes in Q3, up 42% year over year, and "
+                "gold ETFs added 211 tonnes after Q2 outflows. In contrast, "
+                "jewellery demand fell 17% and bar-and-coin demand fell 19% "
+                "year over year as high prices weighed on buyers."
+            ),
+            "conclusion": (
+                "The report's evidence is supportive but mixed, not a "
+                "standalone price forecast: central-bank and ETF demand, "
+                "fiscal concerns, and limited supply growth may support gold, "
+                "while high prices are restraining jewellery and retail "
+                "investment demand. The World Gold Council expects central-bank "
+                "buying to at least match 2025, but describes investment demand "
+                "as facing competing crosswinds."
             ),
             "long_term_assessment": (
                 "Mixed: strong institutional demand supports gold, while "

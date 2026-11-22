@@ -31,6 +31,14 @@
       margin: 0 auto; padding: 24px 0;
     }
     .topbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 16px; }
+    .header-menu { position: relative; flex: 0 0 auto; }
+    .header-menu summary { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 9px; color: #334155; font-size: .84rem; font-weight: 650; cursor: pointer; list-style: none; }
+    .header-menu summary::-webkit-details-marker { display: none; }
+    .header-menu summary::after { margin-left: 8px; content: "▾"; }
+    .header-menu[open] summary::after { content: "▴"; }
+    .header-menu-links { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 190px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; box-shadow: 0 8px 24px rgb(15 23 42 / 12%); }
+    .header-menu-links a { display: block; padding: 9px 10px; border-radius: 7px; color: #334155; font-size: .82rem; text-decoration: none; }
+    .header-menu-links a:hover, .header-menu-links a:focus-visible { background: #eff6ff; color: #1d4ed8; outline: none; }
     .eyebrow { margin: 0 0 7px; color: #2563eb; font-size: .73rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
     h1 { margin: 0; font-size: clamp(1.8rem, 3.8vw, 2.55rem); letter-spacing: -.05em; line-height: 1.1; }
     .subtitle { margin: 9px 0 0; color: #64748b; font-size: .98rem; }
@@ -125,11 +133,16 @@
     .watch-factor { padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 999px; color: #475569; font-size: .7rem; }
     .research-source { margin: 14px 0 0; color: #64748b; font-size: .75rem; }
     .research-source a { color: #1d4ed8; font-weight: 650; }
-    .stock-sentiments { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .stock-sentiments { display: grid; max-height: 260px; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; overflow-y: auto; padding: 2px 6px 6px 2px; overscroll-behavior: contain; scroll-behavior: smooth; scrollbar-gutter: stable; }
     .stock-sentiment { min-width: 0; padding: 13px 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
     .stock-sentiment-name { display: block; overflow: hidden; color: #64748b; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
     .stock-sentiment-symbol { display: block; margin-top: 3px; font-size: .96rem; font-weight: 750; }
-    .stock-sentiment-bottom { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-top: 8px; font-size: .75rem; }
+    .stock-sentiment-horizons { display: grid; gap: 6px; margin-top: 10px; }
+    .stock-sentiment-period { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; align-items: center; font-size: .68rem; }
+    .stock-sentiment-period .sentiment-badge { max-width: 100%; white-space: normal; }
+    .stock-sentiment-scroll-controls { display: flex; flex: 0 0 auto; gap: 6px; }
+    .stock-sentiment-scroll-button { display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #334155; font-size: 1rem; cursor: pointer; }
+    .stock-sentiment-scroll-button:disabled { cursor: default; opacity: .4; }
     .sentiment-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: .7rem; font-weight: 720; white-space: nowrap; }
     .sentiment-positive { background: #dcfce7; color: #166534; }
     .sentiment-negative { background: #fee2e2; color: #991b1b; }
@@ -153,7 +166,7 @@
     }
     @media (max-width: 600px) {
       main { width: calc(100% - 28px); padding: 24px 0 36px; }
-      .topbar { align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+      .topbar { flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
       .subtitle { max-width: 29ch; font-size: .88rem; line-height: 1.45; }
       .refresh-button { width: 44px; min-width: 44px; height: 44px; padding: 0; overflow: hidden; font-size: 0; }
       .refresh-icon { width: 19px; height: 19px; }
@@ -179,6 +192,10 @@
       :root { background: #0b1220; color: #e5e7eb; }
       body { background: radial-gradient(ellipse at 10% -15%, rgb(37 99 235 / 13%), transparent 32rem), #0b1220; }
       .subtitle, .status, .price-unit, .stat dt, .card-message, .footnote { color: #94a3b8; }
+      .header-menu summary { border-color: #334155; color: #e2e8f0; }
+      .header-menu-links { border-color: #334155; background: #111b2e; }
+      .header-menu-links a { color: #e2e8f0; }
+      .header-menu-links a:hover, .header-menu-links a:focus-visible { background: #1e293b; color: #93c5fd; }
       .quote-card { border-color: #263248; background: #111b2e; box-shadow: 0 8px 26px rgb(0 0 0 / 12%); }
       .source-badge { border-color: #334155; color: #cbd5e1; }
       .news-item, .news-message { border-color: #263248; background: #111b2e; }
@@ -186,6 +203,7 @@
       .news-updated, .news-meta { color: #94a3b8; }
       .news-source, .news-title a:hover { color: #93c5fd; }
       .stock-sentiment { border-color: #263248; background: #111b2e; }
+      .stock-sentiment-scroll-button { border-color: #334155; background: #111b2e; color: #e2e8f0; }
       .sentiment-positive { background: #14532d; color: #bbf7d0; }
       .sentiment-negative { background: #7f1d1d; color: #fecaca; }
       .sentiment-neutral { background: #334155; color: #e2e8f0; }
@@ -211,6 +229,12 @@
         <h1 class="m-0 text-[clamp(1.8rem,3.8vw,2.55rem)] leading-[1.1] tracking-[-.05em]">AuricAI</h1>
         <p class="subtitle mt-[9px] text-[.98rem]">Precious-metals prices, exchange rates, and stock market news.</p>
       </div>
+      <details class="header-menu">
+        <summary>Sections</summary>
+        <nav class="header-menu-links" aria-label="Dashboard sections">
+          <a href="/stock-sentiment" target="_blank" rel="noopener noreferrer">Indian stock sentiment</a>
+        </nav>
+      </details>
       <div class="flex items-center gap-2">
         <button id="logout" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800" type="button">Sign out</button>
         <button id="refresh" class="refresh-button inline-flex min-h-11 flex-[0_0_auto] items-center justify-center gap-[9px] rounded-[11px] bg-blue-700 px-4 text-[.9rem] font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 max-[600px]:h-11 max-[600px]:w-11 max-[600px]:min-w-11 max-[600px]:overflow-hidden max-[600px]:p-0 max-[600px]:text-[0]" type="button" aria-label="Refresh prices">
@@ -238,7 +262,14 @@
           <h2 id="news-heading">Stock, Market &amp; Conflict News</h2>
           <p id="news-updated" class="news-updated" aria-live="polite"></p>
         </div>
-        <div id="stock-sentiments" class="stock-sentiments mb-[14px] grid grid-cols-4 gap-[10px] max-[600px]:grid-cols-2" aria-label="Related stock sentiment"></div>
+        <div id="stock-sentiment-section" class="mb-2 flex items-center justify-between gap-2 scroll-mt-4">
+          <p class="news-updated">Indian stocks · short 7 days · medium 30 days · long 90 days · NSE symbol list (BSE-only listings are not included)</p>
+          <div class="stock-sentiment-scroll-controls" aria-label="Scroll stock sentiment cards">
+            <button id="stock-sentiments-up" class="stock-sentiment-scroll-button" type="button" aria-label="Scroll stock sentiment up" aria-controls="stock-sentiments" disabled>↑</button>
+            <button id="stock-sentiments-down" class="stock-sentiment-scroll-button" type="button" aria-label="Scroll stock sentiment down" aria-controls="stock-sentiments" disabled>↓</button>
+          </div>
+        </div>
+        <div id="stock-sentiments" class="stock-sentiments mb-[14px] grid grid-cols-4 gap-[10px] max-[600px]:grid-cols-2" aria-label="Indian stock sentiment by news timeframe" tabindex="0"></div>
         <p class="news-updated news-disclaimer">Sentiment is text-based VADER analysis, not a financial recommendation.</p>
         <div id="news-list" class="news-list grid min-h-0 flex-[1_1_auto] grid-cols-1 content-start gap-3 overflow-y-auto overscroll-contain py-[2px] pr-[6px] pb-[6px] max-[600px]:gap-[10px]" aria-label="Scrollable stock and market headlines" tabindex="0" aria-live="polite">
           <p class="news-message">Loading stock news…</p>
@@ -269,11 +300,26 @@
     const newsListNode = document.getElementById("news-list");
     const newsUpdatedNode = document.getElementById("news-updated");
     const stockSentimentsNode = document.getElementById("stock-sentiments");
+    const stockSentimentsUpButton = document.getElementById("stock-sentiments-up");
+    const stockSentimentsDownButton = document.getElementById("stock-sentiments-down");
     const outlookContentNode = document.getElementById("outlook-content");
     const outlookUpdatedNode = document.getElementById("outlook-updated");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let newsAutoScroll = !reducedMotion.matches;
     let latestGoldNews = null;
+    function updateStockSentimentScrollButtons() {
+      const maxScroll = stockSentimentsNode.scrollHeight - stockSentimentsNode.clientHeight;
+      stockSentimentsUpButton.disabled = maxScroll <= 0 || stockSentimentsNode.scrollTop <= 0;
+      stockSentimentsDownButton.disabled = maxScroll <= 0 || stockSentimentsNode.scrollTop >= maxScroll - 1;
+    }
+
+    stockSentimentsUpButton.addEventListener("click", () => {
+      stockSentimentsNode.scrollBy({ top: -stockSentimentsNode.clientHeight * 0.8, behavior: "smooth" });
+    });
+    stockSentimentsDownButton.addEventListener("click", () => {
+      stockSentimentsNode.scrollBy({ top: stockSentimentsNode.clientHeight * 0.8, behavior: "smooth" });
+    });
+    stockSentimentsNode.addEventListener("scroll", updateStockSentimentScrollButtons);
     let goldNewsError = null;
     let newsScrollPausedUntil = 0;
     let newsScrollLastFrame = 0;
@@ -569,29 +615,39 @@
         stockSentimentsNode.append(element(
           "p",
           "news-message",
-          "No NSE-listed stocks were identified in these headlines."
+          "No Indian stocks from the NSE symbol list were identified in the available news."
         ));
       } else {
-        for (const stock of stockSentiments.slice(0, 8)) {
+        for (const stock of stockSentiments) {
           const card = element("article", "stock-sentiment");
           card.append(element("span", "stock-sentiment-name", stock.name));
           card.append(element("span", "stock-sentiment-symbol", stock.symbol));
-          const bottom = element("div", "stock-sentiment-bottom");
-          const sentimentClass = stock.label.toLowerCase();
-          bottom.append(element(
-            "span",
-            `sentiment-badge sentiment-${sentimentClass}`,
-            `${stock.label} · ${Number(stock.compound).toFixed(2)}`
-          ));
-          bottom.append(element(
-            "span",
-            "news-updated",
-            `${stock.article_count} ${stock.article_count === 1 ? "article" : "articles"}`
-          ));
-          card.append(bottom);
+          const horizons = element("div", "stock-sentiment-horizons");
+          for (const [key, label] of [
+            ["short_term", "Short · 7d"],
+            ["medium_term", "Medium · 30d"],
+            ["long_term", "Long · 90d"]
+          ]) {
+            const period = stock[key];
+            const row = element("div", "stock-sentiment-period");
+            row.append(element("span", "", label));
+            if (period) {
+              const sentimentClass = period.label.toLowerCase();
+              row.append(element(
+                "span",
+                `sentiment-badge sentiment-${sentimentClass}`,
+                `${period.label} · ${Number(period.compound).toFixed(2)} · ${period.article_count} ${period.article_count === 1 ? "article" : "articles"}`
+              ));
+            } else {
+              row.append(element("span", "news-updated", "No dated news"));
+            }
+            horizons.append(row);
+          }
+          card.append(horizons);
           stockSentimentsNode.append(card);
         }
       }
+      requestAnimationFrame(updateStockSentimentScrollButtons);
 
       const regularArticles = (data.articles || []).map((article) => ({
         ...article,
@@ -863,6 +919,10 @@
       sourceLink.rel = "noopener noreferrer";
       source.append(sourceLink);
       researchCard.append(source);
+      researchCard.append(element("h4", "", "Research summary"));
+      researchCard.append(element("p", "research-summary", research.summary));
+      researchCard.append(element("h4", "", "Conclusion"));
+      researchCard.append(element("p", "research-summary", research.conclusion));
       researchCard.append(element("p", "research-source", data.disclaimer));
       source.append(document.createTextNode(` Historical price data: ${momentum.source}.`));
       const historyLink = element("a", "", "View price history");

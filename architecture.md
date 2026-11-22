@@ -98,6 +98,7 @@ Open `http://127.0.0.1:8000/`.
 | Route | Purpose |
 | --- | --- |
 | `GET /` | Serves `templates/metals_dashboard.html`. |
+| `GET /stock-sentiment` | Serves the standalone NSE stock-sentiment page opened by the dashboard menu in a new tab. |
 | `GET /login`, `GET /register`, `GET /forgot-password`, `GET /reset-password` | Serves sign-in, registration, and password reset pages. |
 | `GET /auth/google`, `GET /auth/google/callback` | Starts Google OpenID Connect sign-in and validates the verified identity before creating a session. |
 | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Creates accounts, starts a signed-cookie session, or clears it. |
@@ -113,7 +114,7 @@ The UI uses Tailwind utility classes for layout, spacing, and responsive
 behavior. `static/tailwind.input.css` and `tailwind.config.js` are the build
 inputs; `npm run build:css` writes the stylesheet served at `/static/tailwind.css`.
 
-The dashboard and all `/api/*` data routes require a valid session. Open
+The dashboard, standalone stock-sentiment page, and all `/api/*` data routes require a valid session. Open
 registration collects first name, last name, mobile number, email, and a
 password entered twice; it stores Argon2 password hashes and profile fields in
 MySQL. Startup adds missing profile columns to an existing `users` table.
@@ -186,8 +187,9 @@ separate quote providers and can differ.
 ## News and stock sentiment
 
 `GET /api/news` calls the RSS provider in the stock-news package, merges and
-deduplicates items, keeps items from the previous seven days, and returns at
-most 12 articles.
+deduplicates items, and returns at most 12 display articles from the previous
+seven days. It separately considers up to 500 dated RSS items from the previous
+90 days for stock-level sentiment.
 
 For each article, `fastapi_app.py`:
 
@@ -196,11 +198,20 @@ For each article, `fastapi_app.py`:
 2. Matches company names and unambiguous uppercase ticker symbols against the
    NSE symbol list in `stock_news_agent/static/nse_symbols.json`.
 3. Returns the sentiment label and compound score, plus matched stocks.
-4. Aggregates average compound sentiment and article count per matched stock.
+4. Aggregates average compound sentiment independently for nested 7-, 30-, and
+   90-day windows, excluding items without publication dates and future-dated
+   items. Each horizon includes its matching article count or `null` when no
+   dated matching headlines are available.
 
 The UI shows article sentiment, related ticker tags, and up to eight
-stock-level summaries. Sentiment is a text signal, not a price prediction or
-investment recommendation.
+stock-level summaries with short-, medium-, and long-term readings. The stock
+universe comes from `stock_news_agent/static/nse_symbols.json`: NSE-listed
+companies are covered, including cross-listed companies when matched by their
+name or NSE symbol; BSE-only listings are not covered. The RSS feeds may not
+retain 90 days of history, so a horizon with no dated matching headlines is
+shown as having no dated news rather than assigning a misleading sentiment.
+Sentiment is a text signal, not a price prediction or investment
+recommendation.
 
 ### Stock-news deployment dependency
 
@@ -232,9 +243,10 @@ API also includes a sourced research summary from the World Gold Council's Q3
 2026 Gold Demand Trends report: central-bank and ETF demand are listed as
 supporting factors, while high prices' effect on jewellery and bar/coin demand
 are noted as headwinds. Interest rates, the US dollar, ETF/central-bank flows,
-and geopolitical/fiscal risks are listed as watch factors. Research is static
-content in `fastapi_app.py`; price momentum is fetched live when the endpoint
-is requested.
+and geopolitical/fiscal risks are listed as watch factors. The research card
+places a report summary and balanced conclusion directly below its source link.
+Research is static content in `fastapi_app.py`; price momentum is fetched live
+when the endpoint is requested.
 
 `GET /api/gold-outlook` returns update time, instrument and data timestamp,
 period returns, source links, research factors, and a disclaimer. If Yahoo

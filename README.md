@@ -85,6 +85,11 @@ prices for Gold BeES and Silver BeES, stock/market headlines, VADER sentiment
 for headlines mentioning NSE-listed companies, and a gold outlook based on
 recent/longer-term COMEX gold futures momentum and cited fundamental research.
 The gold outlook is not a forecast or investment advice.
+Stock sentiment cards show the average news-text tone for matched Indian
+companies over 7-day, 30-day, and 90-day windows. Matching uses the bundled NSE
+symbol list; BSE-only listings are not covered. Results depend on the date range
+available from the RSS feeds, and sentiment is not a price forecast or
+investment recommendation.
 Use **Refresh prices** to fetch updated quotes. The JSON endpoints are
 `GET /api/prices`, `POST /api/refresh`, `GET /api/news`, and
 `GET /api/gold-outlook`, and `GET /api/gold-news`. The gold outlook also shows
@@ -92,6 +97,8 @@ recent gold-market headlines with sentiment labels; these reflect headline
 text tone and are not price forecasts or investment advice.
 The stock and market news panel also includes a separate stream of recent
 conflict and geopolitical headlines related to gold, stocks, oil, or markets.
+Choose **Indian stock sentiment** from the dashboard's **Sections** menu to open
+the standalone sentiment view in a new tab.
 
 Alternatively, run the app with Uvicorn:
 
@@ -123,13 +130,17 @@ python precious_metals_dashboard.py
 - Stock and market headlines: RSS sources configured in
   `stock_news_agent/providers/rss_provider.py`.
 - Headline sentiment: VADER. The first request downloads NLTK's
-  `vader_lexicon` if it is not already available. Sentiment is a text signal,
+  `vader_lexicon` if it is not already available. Stock-level summaries use
+  dated articles in nested 7-, 30-, and 90-day windows and the bundled NSE
+  symbol list; BSE-only listings are not covered. Sentiment is a text signal,
   not investment advice.
 - Gold momentum: daily COMEX gold futures (`GC=F`) closes from Yahoo Finance;
   the dashboard compares five trading sessions, one month, and approximately
   one year. This is historical momentum, not a price forecast.
 - Long-term gold demand research: World Gold Council's Q3 2026
   [Gold Demand Trends](https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-q3-2026).
+  The dashboard includes an attributed summary and balanced conclusion from
+  this report, published 3 November 2026 with data through 30 September 2026.
 - USD/INR: Moneycontrol, with a dated reference-rate fallback when unavailable.
 
 The MCX gold, silver, and crude oil quotes are futures contract prices. Crude
