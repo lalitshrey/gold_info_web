@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import math
 import os
 import json
 import logging
@@ -20,13 +21,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, AsyncIterator
 from urllib.parse import urlencode, urlsplit
+from zoneinfo import ZoneInfo
 
 import uvicorn
 import httpx
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -45,8 +47,10 @@ from database import (
     get_user_by_email,
     get_user_by_id,
     initialize_database,
+    list_stock_recommendations,
     revoke_password_reset_token,
     reset_user_password,
+    save_stock_recommendation,
     store_news_articles,
 )
 from gold_research import fetch_gold_momentum
@@ -321,6 +325,102 @@ def _sentiment_label(compound: float) -> str:
     if compound <= -0.05:
         return "Negative"
     return "Neutral"
+
+
+def _fetch_stock_levels(symbol: str) -> dict[str, Any]:
+    try:
+        response = httpx.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.NS",
+            params={"range": "3mo", "interval": "1d"},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        result = payload["chart"]["result"][0]
+        meta = result["meta"]
+        timestamps = result["timestamp"]
+        quote = result["indicators"]["quote"][0]
+        highs = quote["high"]
+        lows = quote["low"]
+        closes = quote["close"]
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
+        raise RuntimeError(f"Could not retrieve NSE {symbol} daily prices: {error}") from error
+
+    observations: list[tuple[int, float, float, float]] = []
+    for timestamp, high, low, close in zip(timestamps, highs, lows, closes):
+        try:
+            high_value = float(high)
+            low_value = float(low)
+            close_value = float(close)
+        except (TypeError, ValueError):
+            continue
+        if (
+            not all(math.isfinite(value) for value in (high_value, low_value, close_value))
+            or min(high_value, low_value, close_value) <= 0
+        ):
+            continue
+        observations.append((timestamp, high_value, low_value, close_value))
+
+    if len(observations) < 15:
+        raise RuntimeError(f"Yahoo Finance returned too few daily prices for NSE {symbol} to calculate ATR-14.")
+
+    true_ranges = []
+    previous_close = None
+    for _, high, low, close in observations:
+        if previous_close is not None:
+            true_ranges.append(max(high - low, abs(high - previous_close), abs(low - previous_close)))
+        previous_close = close
+
+    if len(true_ranges) < 14:
+        raise RuntimeError(f"Yahoo Finance returned too few valid ranges for NSE {symbol}.")
+
+    atr = sum(true_ranges[:14]) / 14
+    for true_range in true_ranges[14:]:
+        atr = ((atr * 13) + true_range) / 14
+
+    latest_timestamp, _, _, latest_close = observations[-1]
+    try:
+        market_price = float(meta.get("regularMarketPrice"))
+    except (TypeError, ValueError):
+        market_price = latest_close
+    current_price = (
+        market_price
+        if math.isfinite(market_price) and market_price > 0
+        else latest_close
+    )
+    price_as_of = meta.get("regularMarketTime") or latest_timestamp
+    stop_loss = current_price - (2 * atr)
+    if stop_loss <= 0:
+        raise RuntimeError(f"Could not calculate a positive stop-loss price for NSE {symbol}.")
+    target = current_price + (2 * (current_price - stop_loss))
+
+    return {
+        "symbol": symbol,
+        "current_price": current_price,
+        "price_as_of": datetime.fromtimestamp(price_as_of, tz=timezone.utc).isoformat(),
+        "atr_14": atr,
+        "stop_loss": stop_loss,
+        "target": target,
+        "stop_loss_pct": (current_price - stop_loss) / current_price * 100,
+        "target_pct": (target - current_price) / current_price * 100,
+        "holding_period": "30 trading days",
+        "method": "Long cash/delivery; NSE daily ATR-14; stop 2×ATR below price; target 2× risk above price (1:2 risk/reward)",
+        "position_type": "Long cash/delivery",
+        "source": "Yahoo Finance · NSE",
+        "daily_bars": [
+            {
+                "date": datetime.fromtimestamp(timestamp, timezone.utc)
+                .astimezone(ZoneInfo("Asia/Kolkata"))
+                .date()
+                .isoformat(),
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+            for timestamp, high, low, close in observations
+        ],
+    }
 
 
 def _get_sentiment_analyzer() -> Any:
@@ -973,6 +1073,70 @@ async def stock_news(_: User = Depends(require_user)) -> dict[str, Any]:
         "articles": analyzed_articles,
         "war_articles": analyzed_war_articles,
         "stock_sentiments": stock_sentiments,
+    }
+
+
+@app.get("/api/stock-levels")
+async def stock_levels(
+    symbols: list[str] = Query(...),
+    record_recommendations: bool = Query(default=True),
+    user: User = Depends(require_user),
+) -> dict[str, Any]:
+    unique_symbols = list(dict.fromkeys(symbols))
+    if not unique_symbols or len(unique_symbols) > 100:
+        raise HTTPException(
+            status_code=422,
+            detail="Request between 1 and 100 NSE stock symbols at a time.",
+        )
+
+    known_symbols = {symbol for symbol, _, _ in _stock_matchers()}
+    unknown_symbols = [symbol for symbol in unique_symbols if symbol not in known_symbols]
+    if unknown_symbols:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown NSE stock symbols: {', '.join(unknown_symbols)}",
+        )
+
+    semaphore = asyncio.Semaphore(8)
+
+    async def fetch_level(symbol: str) -> tuple[str, dict[str, Any]]:
+        async with semaphore:
+            try:
+                level = await asyncio.to_thread(_fetch_stock_levels, symbol)
+            except RuntimeError as error:
+                _logger.warning("Could not calculate NSE price levels for %s: %s", symbol, error)
+                return symbol, {"error": "Latest price or ATR data is unavailable."}
+            level["name"] = next(
+                name for matched_symbol, name, _ in _stock_matchers()
+                if matched_symbol == symbol
+            )
+            recommendation = await asyncio.to_thread(
+                save_stock_recommendation,
+                user.id,
+                level,
+                create_if_missing=record_recommendations,
+            )
+            level.pop("daily_bars", None)
+            if recommendation is not None:
+                level["recommendation"] = recommendation
+            return symbol, level
+
+    levels = dict(await asyncio.gather(*(fetch_level(symbol) for symbol in unique_symbols)))
+    return {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "levels": levels,
+    }
+
+
+@app.get("/api/stock-recommendations")
+async def stock_recommendations(
+    limit: int = Query(default=200, ge=1, le=500),
+    user: User = Depends(require_user),
+) -> dict[str, Any]:
+    records = await asyncio.to_thread(list_stock_recommendations, user.id, limit)
+    return {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "recommendations": records,
     }
 
 

@@ -31,6 +31,8 @@
       margin: 0 auto; padding: 24px 0;
     }
     .topbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 16px; }
+    .home-link { color: inherit; font-weight: 750; text-decoration: none; }
+    .home-link:focus-visible { border-radius: 4px; outline: 3px solid #93c5fd; outline-offset: 4px; }
     .header-menu { position: relative; flex: 0 0 auto; }
     .header-menu summary { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 9px; color: #334155; font-size: .84rem; font-weight: 650; cursor: pointer; list-style: none; }
     .header-menu summary::-webkit-details-marker { display: none; }
@@ -226,13 +228,13 @@
   <main class="mx-auto flex min-h-dvh w-[calc(100%-3rem)] max-w-[1600px] flex-col py-6 max-[1050px]:w-[calc(100%-2.5rem)] max-[760px]:w-[min(900px,calc(100%-2.5rem))] max-[760px]:py-7 max-[600px]:w-[calc(100%-1.75rem)] max-[600px]:py-6">
     <header class="topbar flex flex-[0_0_auto] items-center justify-between gap-6 max-[600px]:mb-5 max-[600px]:items-start max-[600px]:gap-3">
       <div>
-        <h1 class="m-0 text-[clamp(1.8rem,3.8vw,2.55rem)] leading-[1.1] tracking-[-.05em]">AuricAI</h1>
+        <h1 class="m-0 text-[clamp(1.8rem,3.8vw,2.55rem)] leading-[1.1] tracking-[-.05em]"><a class="home-link" href="/"># AuricAI home</a></h1>
         <p class="subtitle mt-[9px] text-[.98rem]">Precious-metals prices, exchange rates, and stock market news.</p>
       </div>
       <details class="header-menu">
         <summary>Sections</summary>
         <nav class="header-menu-links" aria-label="Dashboard sections">
-          <a href="/stock-sentiment" target="_blank" rel="noopener noreferrer">Indian stock sentiment</a>
+          <a href="/stock-sentiment">Indian stock sentiment</a>
         </nav>
       </details>
       <div class="flex items-center gap-2">

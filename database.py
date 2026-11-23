@@ -1,13 +1,15 @@
-"""MySQL persistence for users and normalized news articles."""
+"""MySQL persistence for users, news, and stock recommendations."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from hashlib import sha256
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     DateTime,
+    Date,
     Float,
     ForeignKey,
     Integer,
@@ -102,6 +104,42 @@ class NewsArticle(Base):
     sentiment_label: Mapped[str | None] = mapped_column(String(16))
     sentiment_score: Mapped[float | None] = mapped_column(Float)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class StockRecommendation(Base):
+    __tablename__ = "stock_recommendations"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "symbol",
+            "recommendation_date",
+            name="uq_stock_recommendation_user_symbol_date",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    recommendation_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    recommended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_price: Mapped[float] = mapped_column(Float, nullable=False)
+    price_as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    atr_14: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_loss: Mapped[float] = mapped_column(Float, nullable=False)
+    target: Mapped[float] = mapped_column(Float, nullable=False)
+    holding_period_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open", index=True)
+    outcome_date: Mapped[date | None] = mapped_column(Date)
+    outcome_price: Mapped[float | None] = mapped_column(Float)
+    checked_sessions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_checked_date: Mapped[date | None] = mapped_column(Date)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 _engine = None
@@ -336,6 +374,152 @@ def store_news_articles(
                 for field, value in values.items():
                     setattr(existing, field, value)
         session.commit()
+
+
+def save_stock_recommendation(
+    user_id: int,
+    level: dict[str, Any],
+    *,
+    create_if_missing: bool = True,
+) -> dict[str, Any] | None:
+    """Save the day's recommendation and advance existing outcome tracking."""
+    india_today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    now = _utcnow()
+    price_as_of = _parse_datetime(level["price_as_of"])
+    if price_as_of is None:
+        raise ValueError("Stock recommendation is missing its price timestamp.")
+    recommendation_values = {
+        "name": str(level["name"])[:255],
+        "recommended_at": now,
+        "current_price": float(level["current_price"]),
+        "price_as_of": price_as_of,
+        "atr_14": float(level["atr_14"]),
+        "stop_loss": float(level["stop_loss"]),
+        "target": float(level["target"]),
+        "holding_period_days": 30,
+        "source": str(level["source"])[:100],
+    }
+
+    with _session() as session:
+        recommendation = session.scalar(
+            select(StockRecommendation).where(
+                StockRecommendation.user_id == user_id,
+                StockRecommendation.symbol == level["symbol"],
+                StockRecommendation.recommendation_date == india_today,
+            )
+        )
+        if recommendation is None and create_if_missing:
+            try:
+                with session.begin_nested():
+                    recommendation = StockRecommendation(
+                        user_id=user_id,
+                        symbol=str(level["symbol"]),
+                        recommendation_date=india_today,
+                        **recommendation_values,
+                    )
+                    session.add(recommendation)
+                    session.flush()
+            except IntegrityError:
+                recommendation = session.scalar(
+                    select(StockRecommendation).where(
+                        StockRecommendation.user_id == user_id,
+                        StockRecommendation.symbol == level["symbol"],
+                        StockRecommendation.recommendation_date == india_today,
+                    )
+                )
+                if recommendation is None:
+                    raise
+
+        observations = sorted(level.get("daily_bars", []), key=lambda bar: bar["date"])
+        open_recommendations = session.scalars(
+            select(StockRecommendation).where(
+                StockRecommendation.user_id == user_id,
+                StockRecommendation.symbol == level["symbol"],
+                StockRecommendation.status == "open",
+            )
+        )
+        for open_recommendation in open_recommendations:
+            for bar in observations:
+                bar_date = date.fromisoformat(bar["date"])
+                if (
+                    bar_date <= open_recommendation.recommendation_date
+                    or bar_date >= india_today
+                    or (
+                        open_recommendation.last_checked_date is not None
+                        and bar_date <= open_recommendation.last_checked_date
+                    )
+                ):
+                    continue
+
+                open_recommendation.checked_sessions += 1
+                open_recommendation.last_checked_date = bar_date
+                stop_reached = float(bar["low"]) <= open_recommendation.stop_loss
+                target_reached = float(bar["high"]) >= open_recommendation.target
+                if stop_reached and target_reached:
+                    open_recommendation.status = "both_hit_same_day"
+                    open_recommendation.outcome_date = bar_date
+                elif stop_reached:
+                    open_recommendation.status = "stop_loss_hit"
+                    open_recommendation.outcome_date = bar_date
+                    open_recommendation.outcome_price = open_recommendation.stop_loss
+                elif target_reached:
+                    open_recommendation.status = "target_hit"
+                    open_recommendation.outcome_date = bar_date
+                    open_recommendation.outcome_price = open_recommendation.target
+                elif open_recommendation.checked_sessions >= open_recommendation.holding_period_days:
+                    open_recommendation.status = "expired"
+                    open_recommendation.outcome_date = bar_date
+                if open_recommendation.status != "open":
+                    break
+            open_recommendation.last_checked_at = now
+
+        session.commit()
+        if recommendation is None:
+            return None
+        session.refresh(recommendation)
+        return _stock_recommendation_dict(recommendation)
+
+
+def list_stock_recommendations(user_id: int, limit: int = 200) -> list[dict[str, Any]]:
+    with _session() as session:
+        records = session.scalars(
+            select(StockRecommendation)
+            .where(StockRecommendation.user_id == user_id)
+            .order_by(
+                StockRecommendation.recommendation_date.desc(),
+                StockRecommendation.symbol,
+            )
+            .limit(limit)
+        )
+        return [_stock_recommendation_dict(record) for record in records]
+
+
+def _stock_recommendation_dict(record: StockRecommendation) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "symbol": record.symbol,
+        "name": record.name,
+        "recommendation_date": record.recommendation_date.isoformat(),
+        "recommended_at": record.recommended_at.isoformat(),
+        "current_price": record.current_price,
+        "price_as_of": record.price_as_of.isoformat(),
+        "atr_14": record.atr_14,
+        "stop_loss": record.stop_loss,
+        "target": record.target,
+        "holding_period_days": record.holding_period_days,
+        "source": record.source,
+        "status": record.status,
+        "outcome_date": (
+            record.outcome_date.isoformat() if record.outcome_date is not None else None
+        ),
+        "outcome_price": record.outcome_price,
+        "checked_sessions": record.checked_sessions,
+        "last_checked_date": (
+            record.last_checked_date.isoformat()
+            if record.last_checked_date is not None
+            else None
+        ),
+    }
 
 
 def _parse_datetime(value: str | None) -> datetime | None:

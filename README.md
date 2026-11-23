@@ -98,7 +98,18 @@ text tone and are not price forecasts or investment advice.
 The stock and market news panel also includes a separate stream of recent
 conflict and geopolitical headlines related to gold, stocks, oil, or markets.
 Choose **Indian stock sentiment** from the dashboard's **Sections** menu to open
-the standalone sentiment view in a new tab.
+the standalone sentiment view in the current tab.
+The stock page also shows the latest available NSE price and indicative
+30-trading-day stop-loss and target levels, calculated with Wilder ATR-14
+(stop-loss at 2×ATR below price; target at twice the risk, or 1:2
+risk/reward). These educational estimates may use delayed prices and are not
+investment advice; gaps, costs, and slippage can change actual results.
+Recommendations are saved once per signed-in user, stock, and India calendar
+date. Later completed daily candles update each open recommendation as target
+hit, stop-loss hit, both hit on the same day (order unknown), still open, or
+expired after 30 sessions. Tracking updates when the sentiment page checks
+prices, including for stocks no longer present in recent headlines; daily
+candles cannot determine intraday order or guarantee execution.
 
 Alternatively, run the app with Uvicorn:
 

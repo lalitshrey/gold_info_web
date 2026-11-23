@@ -15,9 +15,9 @@
     * { box-sizing: border-box; }
     body { min-width: 320px; min-height: 100vh; margin: 0; }
     main { width: min(1200px, calc(100% - 40px)); margin: 0 auto; padding: 32px 0; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
     h1 { margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem); }
-    .back-link { color: #1d4ed8; font-size: .9rem; font-weight: 650; text-decoration: none; }
+    .home-link { color: #1d4ed8; font-size: .9rem; font-weight: 700; text-decoration: none; }
     .description, .status, .stock-name, .period-label, .empty { color: #64748b; }
     .description { margin: 8px 0 20px; font-size: .9rem; line-height: 1.5; }
     .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -31,6 +31,20 @@
     .periods { display: grid; gap: 8px; margin-top: 12px; }
     .period { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: .72rem; }
     .badge { max-width: 100%; padding: 4px 7px; border-radius: 999px; font-size: .68rem; font-weight: 700; white-space: normal; }
+    .levels { display: grid; gap: 7px; margin-top: 13px; padding-top: 11px; border-top: 1px solid #e2e8f0; font-size: .72rem; }
+    .level { display: flex; justify-content: space-between; gap: 8px; }
+    .level strong { text-align: right; font-variant-numeric: tabular-nums; }
+    .level-detail { margin: 0; color: #64748b; font-size: .66rem; line-height: 1.4; }
+    .history-section { margin-top: 28px; }
+    .history-section h2 { margin: 0 0 10px; font-size: 1.15rem; }
+    .history-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: .78rem; text-align: left; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    th { color: #64748b; font-weight: 650; }
+    tr:last-child td { border-bottom: 0; }
+    .result-target { color: #15803d; font-weight: 700; }
+    .result-stop { color: #b91c1c; font-weight: 700; }
+    .result-open, .result-expired, .result-both { color: #64748b; font-weight: 650; }
     .positive { background: #dcfce7; color: #166534; }
     .negative { background: #fee2e2; color: #991b1b; }
     .neutral { background: #f1f5f9; color: #475569; }
@@ -43,7 +57,7 @@
     @media (max-width: 400px) { .grid { grid-template-columns: minmax(0, 1fr); } }
     @media (prefers-color-scheme: dark) {
       :root { color: #e5e7eb; background: #0b1220; }
-      .back-link { color: #93c5fd; }
+      .home-link { color: #93c5fd; }
       .description, .status, .stock-name, .period-label, .empty { color: #94a3b8; }
       button, .card, .empty { border-color: #263248; background: #111b2e; color: #e5e7eb; }
       .positive { background: #14532d; color: #bbf7d0; }
@@ -56,10 +70,10 @@
 <body>
   <main>
     <header>
+      <a class="home-link" href="/"># AuricAI home</a>
       <h1>Indian Stock Sentiment</h1>
-      <a class="back-link" href="/">Back to dashboard</a>
     </header>
-    <p class="description">News-text sentiment for matched companies in the NSE symbol list. BSE-only listings are not included. Short: 7 days · Medium: 30 days · Long: 90 days. Sentiment is not a forecast or investment recommendation.</p>
+    <p class="description">News-text sentiment for matched companies in the NSE symbol list. BSE-only listings are not included. Short: 7 days · Medium: 30 days · Long: 90 days. Indicative long cash/delivery levels for about 30 trading days use the latest available NSE price and 14-day ATR: stop-loss 2×ATR below price, target 2× risk above price (1:2 risk/reward). Market quotes can be delayed; these levels are educational estimates, not investment advice. Price gaps, costs, and slippage may change actual outcomes. Set position size to match your own risk limit.</p>
     <div class="toolbar">
       <p id="status" class="status" aria-live="polite">Loading stock sentiment…</p>
       <div>
@@ -68,12 +82,35 @@
       </div>
     </div>
     <section id="stocks" class="grid" aria-label="Stock sentiment by timeframe" tabindex="0"></section>
+    <section class="history-section" aria-labelledby="history-heading">
+      <h2 id="history-heading">Recommendation History &amp; Outcome Tracking</h2>
+      <p class="level-detail">Each stock’s first recommendation per day is saved. Outcomes are checked against later completed NSE daily candles for up to 30 trading sessions. If both levels fall within the same daily candle, the order is unknown and recorded as ambiguous.</p>
+      <p id="history-status" class="status" aria-live="polite">Loading saved recommendations…</p>
+      <div class="history-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th>Stock</th><th>Entry</th><th>Stop-loss</th><th>Target</th><th>Result</th><th>Outcome date</th><th>Outcome price</th><th>Checked sessions</th>
+            </tr>
+          </thead>
+          <tbody id="history-rows"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
   <script>
     const stocksNode = document.getElementById("stocks");
     const statusNode = document.getElementById("status");
     const upButton = document.getElementById("scroll-up");
     const downButton = document.getElementById("scroll-down");
+    const historyRows = document.getElementById("history-rows");
+    const historyStatus = document.getElementById("history-status");
+    const levelNodes = new Map();
+    const inrFormat = new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2
+    });
 
     function updateScrollButtons() {
       const maxScroll = stocksNode.scrollHeight - stocksNode.clientHeight;
@@ -86,6 +123,45 @@
       if (className) node.className = className;
       node.textContent = text;
       return node;
+    }
+
+    function renderHistory(records) {
+      historyRows.replaceChildren();
+      if (!records.length) {
+        const row = document.createElement("tr");
+        const cell = makeElement("td", "period-label", "No recommendations have been saved yet.");
+        cell.colSpan = 9;
+        row.append(cell);
+        historyRows.append(row);
+        return;
+      }
+      for (const record of records) {
+        const row = document.createElement("tr");
+        const result = {
+          open: ["Open", "result-open"],
+          target_hit: ["Target hit", "result-target"],
+          stop_loss_hit: ["Stop-loss hit", "result-stop"],
+          both_hit_same_day: ["Both hit same day (order unknown)", "result-both"],
+          expired: ["Expired · no level hit", "result-expired"]
+        }[record.status] || [record.status, "result-open"];
+        const cells = [
+          record.recommendation_date,
+          `${record.name} (${record.symbol})`,
+          inrFormat.format(record.current_price),
+          inrFormat.format(record.stop_loss),
+          inrFormat.format(record.target),
+          result[0],
+          record.outcome_date || "—",
+          record.outcome_price == null ? "—" : inrFormat.format(record.outcome_price),
+          `${record.checked_sessions}/${record.holding_period_days}`
+        ];
+        for (const [index, value] of cells.entries()) {
+          const cell = makeElement(index === 0 ? "th" : "td", index === 5 ? result[1] : "", value);
+          if (index === 0) cell.scope = "row";
+          row.append(cell);
+        }
+        historyRows.append(row);
+      }
     }
 
     function renderStocks(stocks) {
@@ -119,9 +195,81 @@
           periods.append(row);
         }
         card.append(periods);
+        const levels = makeElement("div", "levels", "");
+        levels.append(makeElement("p", "level-detail", "Loading latest price and ATR-based levels…"));
+        card.append(levels);
+        levelNodes.set(stock.symbol, levels);
         stocksNode.append(card);
       }
       requestAnimationFrame(updateScrollButtons);
+    }
+
+    async function loadPriceLevels(stocks, recordRecommendations = true) {
+      const symbols = stocks.map((stock) => stock.symbol);
+      for (let index = 0; index < symbols.length; index += 100) {
+        const params = new URLSearchParams();
+        params.set("record_recommendations", String(recordRecommendations));
+        for (const symbol of symbols.slice(index, index + 100)) {
+          params.append("symbols", symbol);
+        }
+        const response = await fetch(`/api/stock-levels?${params}`);
+        if (!response.ok) {
+          throw new Error(`Could not load stock price levels (HTTP ${response.status}).`);
+        }
+        const payload = await response.json();
+        for (const [symbol, level] of Object.entries(payload.levels || {})) {
+          const node = levelNodes.get(symbol);
+          if (!node) continue;
+          node.replaceChildren();
+          if (level.error) {
+            node.append(makeElement("p", "level-detail", level.error));
+            continue;
+          }
+          const recommendation = level.recommendation;
+          node.append(makeElement("div", "level", "Current / latest price"));
+          node.lastChild.append(makeElement("strong", "", inrFormat.format(level.current_price)));
+          node.append(makeElement("div", "level", "Saved entry"));
+          node.lastChild.append(makeElement(
+            "strong",
+            "",
+            `${inrFormat.format(recommendation.current_price)} · ${recommendation.recommendation_date}`
+          ));
+          node.append(makeElement("div", "level", "Stop-loss"));
+          node.lastChild.append(makeElement(
+            "strong",
+            "",
+            `${inrFormat.format(recommendation.stop_loss)} (−${((recommendation.current_price - recommendation.stop_loss) / recommendation.current_price * 100).toFixed(1)}%)`
+          ));
+          node.append(makeElement("div", "level", "Target"));
+          node.lastChild.append(makeElement(
+            "strong",
+            "",
+            `${inrFormat.format(recommendation.target)} (+${((recommendation.target - recommendation.current_price) / recommendation.current_price * 100).toFixed(1)}%)`
+          ));
+          node.append(makeElement(
+            "p",
+            "level-detail",
+            `Saved ATR-14 ${inrFormat.format(recommendation.atr_14)} · 30 trading sessions · ${recommendation.source} · ${new Date(recommendation.price_as_of).toLocaleString()}`
+          ));
+          if (recommendation) {
+            const result = recommendation.status === "open"
+              ? `Tracking · ${recommendation.checked_sessions}/${recommendation.holding_period_days} sessions`
+              : `Result · ${recommendation.status.replaceAll("_", " ")}`;
+            node.append(makeElement("p", "level-detail", `Saved ${recommendation.recommendation_date} · ${result}`));
+          }
+        }
+      }
+    }
+
+    async function loadRecommendationHistory() {
+      const response = await fetch("/api/stock-recommendations?limit=200");
+      if (!response.ok) {
+        throw new Error(`Could not load recommendation history (HTTP ${response.status}).`);
+      }
+      const data = await response.json();
+      renderHistory(data.recommendations || []);
+      historyStatus.textContent = `Updated ${new Date(data.updated_at).toLocaleString()}`;
+      return data.recommendations || [];
     }
 
     upButton.addEventListener("click", () => {
@@ -138,14 +286,40 @@
         return response.json();
       })
       .then((data) => {
-        renderStocks(data.stock_sentiments || []);
+        const stocks = data.stock_sentiments || [];
+        renderStocks(stocks);
         statusNode.textContent = data.updated_at
           ? `Updated ${new Date(data.updated_at).toLocaleString()}`
           : "Updated";
+        loadPriceLevels(stocks).catch((error) => {
+          statusNode.textContent = error.message;
+          for (const node of levelNodes.values()) {
+            node.replaceChildren(makeElement("p", "level-detail", "Price levels could not be loaded."));
+          }
+        });
+        loadRecommendationHistory()
+          .then((records) => {
+            const currentSymbols = new Set(stocks.map((stock) => stock.symbol));
+            const openSymbols = [...new Set(
+              records
+                .filter((record) => record.status === "open" && !currentSymbols.has(record.symbol))
+                .map((record) => record.symbol)
+            )].map((symbol) => ({ symbol }));
+            return loadPriceLevels(openSymbols, false).then(() => loadRecommendationHistory());
+          })
+          .catch((error) => {
+            historyStatus.textContent = `Tracking refresh failed: ${error.message}`;
+          });
       })
       .catch((error) => {
         statusNode.textContent = error.message;
-        stocksNode.replaceChildren(makeElement("p", "empty", "Stock sentiment could not be loaded. Please try again later."));
+        if (stocksNode.childElementCount === 0) {
+          stocksNode.replaceChildren(makeElement("p", "empty", "Stock sentiment could not be loaded. Please try again later."));
+        } else {
+          for (const node of levelNodes.values()) {
+            node.replaceChildren(makeElement("p", "level-detail", "Price levels could not be loaded."));
+          }
+        }
       });
   </script>
 </body>

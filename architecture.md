@@ -98,7 +98,7 @@ Open `http://127.0.0.1:8000/`.
 | Route | Purpose |
 | --- | --- |
 | `GET /` | Serves `templates/metals_dashboard.html`. |
-| `GET /stock-sentiment` | Serves the standalone NSE stock-sentiment page opened by the dashboard menu in a new tab. |
+| `GET /stock-sentiment` | Serves the standalone NSE stock-sentiment page opened by the dashboard menu. |
 | `GET /login`, `GET /register`, `GET /forgot-password`, `GET /reset-password` | Serves sign-in, registration, and password reset pages. |
 | `GET /auth/google`, `GET /auth/google/callback` | Starts Google OpenID Connect sign-in and validates the verified identity before creating a session. |
 | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Creates accounts, starts a signed-cookie session, or clears it. |
@@ -107,6 +107,8 @@ Open `http://127.0.0.1:8000/`.
 | `GET /api/prices` | Returns cached quotes or fetches a new set when the 60-second cache expires. |
 | `POST /api/refresh` | Forces a new parallel quote fetch and refreshes the in-process cache. |
 | `GET /api/news` | Fetches recent market RSS news and a separate conflict/geopolitical market-impact feed; adds VADER sentiment and related NSE stocks. |
+| `GET /api/stock-levels?symbols=...&record_recommendations=true` | Fetches latest available Yahoo Finance NSE prices, calculates ATR-based levels, optionally saves one recommendation per user/symbol/India date, and advances outcome tracking for up to 100 NSE symbols per request. Existing open recommendations can be checked with `record_recommendations=false`. |
+| `GET /api/stock-recommendations` | Returns up to 500 dated recommendations and their tracked outcomes for the signed-in user. |
 | `GET /api/gold-outlook` | Returns COMEX gold futures momentum and cited long-term demand research. |
 | `GET /api/gold-news` | Returns recent Google News RSS results matching gold-market terms with VADER headline sentiment. |
 
@@ -212,6 +214,26 @@ retain 90 days of history, so a horizon with no dated matching headlines is
 shown as having no dated news rather than assigning a misleading sentiment.
 Sentiment is a text signal, not a price prediction or investment
 recommendation.
+
+The standalone stock-sentiment page also requests daily NSE candles from Yahoo
+Finance. It calculates Wilder ATR-14, places the indicative stop-loss two ATRs
+below the latest available price, and sets the target at twice the resulting
+downside risk (1:2 risk/reward) for an approximate 30-trading-day horizon.
+Prices include their provider timestamp; provider delays, gaps, costs, and
+slippage mean these educational calculations are not guaranteed outcomes or
+investment recommendations.
+
+Each signed-in user has one immutable recommendation per NSE ticker per India
+calendar date in `stock_recommendations`. Subsequent page loads evaluate open
+recommendations against later completed daily candles, up to 30 sessions after
+the recommendation date. The first target or stop reached is recorded with its
+date; if both prices occur in one daily candle, the result is recorded as
+ambiguous because daily OHLC data cannot establish which traded first. Open
+recommendations that pass 30 sessions are marked expired. Tracking advances
+when the page requests prices and cannot reconstruct intraday ordering or
+guarantee execution at a threshold.
+The page also refreshes open recommendations for stocks no longer appearing in
+recent headlines without creating new daily recommendations for those stocks.
 
 ### Stock-news deployment dependency
 
